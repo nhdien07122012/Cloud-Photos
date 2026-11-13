@@ -4,6 +4,33 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 6)] - 2026-11-13
+- **Commit SHA**: `a277739`
+- **Mục tiêu**:
+  1. Đồng bộ kích thước nút Thêm (+) và Tìm kiếm bằng tuyệt đối 56px với chiều cao của viên nang TabBar, đảm bảo độ cong tròn bán kính 28px và đường thẳng đáy cân đối 100%.
+  2. Triển khai hoàn chỉnh tính năng Tự động quét và sao lưu ảnh từ Thư viện iPhone (Camera Roll) lên Telegram qua PhotoKit Native Plugin (`PhotoSyncPlugin`) khi mở app hoặc resume từ nền, không cần phải chọn ảnh thủ công.
+  3. Khắc phục triệt để lỗi mất ảnh / hiển thị "Chưa có ảnh nào trong kho" khi chuyển tab hoặc vuốt qua lại (tự động reset bộ lọc khi chạm vào tab Thư viện, tách biệt từ khóa tìm kiếm chỉ áp dụng cho tab Search, bổ sung chip thông báo bộ lọc đang bật kèm nút xóa lọc nhanh, ngăn chặn việc ghi đè rỗng mảng ảnh khi load nền).
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/TabBar.tsx`: Cố định chiều cao `h-[56px]` cho thanh điều hướng TabBar và đặt kích thước nút Thêm `+` và Tìm kiếm chuẩn xác `w-[56px] h-[56px]`, tạo độ cân bằng thị giác tuyệt đối.
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Tích hợp `PhotoSyncPlugin` (`CAPPlugin`, `CAPBridgedPlugin`) sử dụng Apple PhotoKit (`PHPhotoLibrary`, `PHAsset`) cho phép quét tự động các ảnh mới nhất từ Camera Roll của iPhone mà không cần hộp thoại chọn ảnh.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Xây dựng dịch vụ quản lý đồng bộ ảnh nền: kiểm tra quyền, phát hiện ảnh mới chưa sao lưu, chuyển đổi dữ liệu và tự động upload lên Telegram Kênh "Kho ảnh đồng bộ Telegram".
+  - `ios-photo-app/src/App.tsx`:
+    - Tích hợp `handleTabChange`: khi chạm vào tab Thư viện, tự động xóa bộ lọc đang áp dụng và khôi phục hiển thị toàn bộ kho ảnh.
+    - Sửa logic `filteredPhotos`: chỉ lọc theo `searchQuery` khi đang ở tab Search, không làm ẩn ảnh vô lý trong Thư viện.
+    - Sửa hàm `loadPhotos`: không ghi đè mảng rỗng nếu trong cache IndexedDB đang có ảnh.
+    - Tích hợp `executeAutoSync` khi khởi động ứng dụng và khi app quay lại từ background (`App.addListener('appStateChange')`).
+    - Nút "Đồng bộ ngay bây giờ" trong Cài đặt kích hoạt tiến trình sao lưu nền thực sự thay vì mở file picker thủ công.
+    - Bổ sung chip thông báo bộ lọc `Đang lọc: {activeFilter} ✕` và banner tiến trình đồng bộ ngầm trên màn hình Thư viện.
+  - `ios-photo-app/src/components/PhotoGrid.tsx`: Bổ sung thông điệp rõ ràng khi danh sách ảnh rỗng do bộ lọc kèm nút "Xem tất cả ảnh Thư viện" để người dùng không bị kẹt.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Đồng bộ số hiệu bản dựng `CloudPhotos v1.3 • Build 6`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `6`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 5)] - 2026-11-13
 - **Commit SHA**: `3e567cb`
 - **Mục tiêu**: Tinh chỉnh và sửa triệt để lỗi vỡ layout TabBar (loại bỏ chữ text bên dưới icon để chuyển sang thiết kế Icon-Only Floating Dock hiện đại, loại bỏ hoàn toàn tình trạng rớt dòng chữ và tràn viên nang active), đồng thời cân bằng kích thước các nút nổi Thêm (+) và Tìm kiếm để tạo sự đồng bộ cân đối trên màn hình iPhone.

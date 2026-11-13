@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { App as CapApp } from "@capacitor/app";
 import type { PhotoItem, DateGroup, TelegramConfig, PostAlbum, ThemeMode, UserAlbum } from "./types";
 import {
   getStoredConfig,
@@ -13,6 +14,7 @@ import {
   removeMultiplePhotosFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
+import { runAutoSync } from "./services/autoSyncService";
 import {
   getUserAlbums,
   createNewAlbum,
@@ -78,16 +80,50 @@ export const App: React.FC = () => {
   const [isAddPhotosModalOpen, setIsAddPhotosModalOpen] = useState(false);
   const [selectedPhotoIdsForAlbum, setSelectedPhotoIdsForAlbum] = useState<Set<string | number>>(new Set());
 
-  // Auto-Sync Background State
+  // Auto-Sync Background State & Engine
   const [autoSync, setAutoSync] = useState<boolean>(() => {
     return localStorage.getItem("cloud_photos_auto_sync") === "true";
   });
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const [autoSyncStatusText, setAutoSyncStatusText] = useState("");
+
+  const executeAutoSync = async (notify = true) => {
+    if (isAutoSyncing) return;
+    if (!config.isLoggedIn && !config.sessionString) {
+      if (notify) showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
+      return;
+    }
+    setIsAutoSyncing(true);
+    setAutoSyncStatusText("Đang kiểm tra thư viện iPhone...");
+    try {
+      const res = await runAutoSync(config, (current, total, file) => {
+        setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
+      });
+      if (res.syncedCount > 0) {
+        showToast(res.message);
+        if (res.newUploadedPhotos && res.newUploadedPhotos.length > 0) {
+          setPhotos((prev) => [...res.newUploadedPhotos!, ...prev]);
+        } else {
+          loadPhotos(true);
+        }
+      } else if (notify) {
+        showToast(res.message);
+      }
+    } catch (e: any) {
+      console.error("Auto sync trigger error:", e);
+      if (notify) showToast("Lỗi đồng bộ tự động: " + (e.message || ""));
+    } finally {
+      setIsAutoSyncing(false);
+      setAutoSyncStatusText("");
+    }
+  };
 
   const handleAutoSyncChange = (enabled: boolean) => {
     setAutoSync(enabled);
     localStorage.setItem("cloud_photos_auto_sync", String(enabled));
     if (enabled) {
       showToast("Đã bật tự động sao lưu ảnh! 🔄");
+      executeAutoSync(true);
     } else {
       showToast("Đã tắt tự động sao lưu");
     }
@@ -277,10 +313,21 @@ export const App: React.FC = () => {
     setErrorMessage("");
     try {
       const data = await fetchChannelPhotos(config, 80);
-      setPhotos(data);
+      if (data && data.length > 0) {
+        setPhotos(data);
+      } else {
+        // Đảm bảo không làm trống màn hình nếu trong cache IndexedDB có ảnh
+        const cached = await getCachedPhotosFromDB();
+        if (cached && cached.length > 0) {
+          setPhotos(cached);
+        }
+      }
     } catch (e: any) {
       console.error(e);
-      if (e.message && e.message.includes("CHUA_DANG_NHAP")) {
+      const cached = await getCachedPhotosFromDB();
+      if (cached && cached.length > 0) {
+        setPhotos(cached);
+      } else if (e.message && e.message.includes("CHUA_DANG_NHAP")) {
         setErrorMessage("Chưa đăng nhập Telegram cá nhân. Vui lòng bấm Cài đặt và nhập SĐT.");
       } else {
         if (photos.length === 0) {
@@ -298,12 +345,32 @@ export const App: React.FC = () => {
     }
   }, [config.apiId, config.apiHash, config.sessionString, config.isLoggedIn]);
 
-  // Tự động đồng bộ ngầm khi mở app nếu Auto-Sync bật
+  // Tự động sao lưu ảnh Camera Roll lên Telegram khi mở app hoặc bật Auto-Sync
   useEffect(() => {
     if (autoSync && (config.isLoggedIn || config.sessionString)) {
       loadPhotos(true);
+      executeAutoSync(false);
     }
-  }, [autoSync]);
+  }, [autoSync, config.sessionString, config.isLoggedIn]);
+
+  // Lắng nghe khi app mở lại từ nền (App Resume) để tự động quét sao lưu ảnh mới chụp
+  useEffect(() => {
+    let listenerHandle: any = null;
+    CapApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive && autoSync && (config.isLoggedIn || config.sessionString)) {
+        loadPhotos(true);
+        executeAutoSync(false);
+      }
+    }).then((h) => {
+      listenerHandle = h;
+    });
+
+    return () => {
+      if (listenerHandle && listenerHandle.remove) {
+        listenerHandle.remove();
+      }
+    };
+  }, [autoSync, config.sessionString, config.isLoggedIn]);
 
   // Phân loại các bài viết cũ thành từng Album
   const postAlbums: PostAlbum[] = useMemo(() => {
@@ -363,7 +430,8 @@ export const App: React.FC = () => {
   const filteredPhotos = useMemo(() => {
     let list = [...photos];
 
-    if (searchQuery.trim()) {
+    // Chỉ lọc theo từ khóa khi người dùng đang ở tab Tìm kiếm
+    if (currentTab === "search" && searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (p) =>
@@ -391,7 +459,7 @@ export const App: React.FC = () => {
     }
 
     return list;
-  }, [photos, activeFilter, searchQuery, favorites, sortBy]);
+  }, [photos, activeFilter, searchQuery, favorites, sortBy, currentTab]);
 
   // Tính dải ngày tháng hiển thị dưới tiêu đề "Thư viện" (Ví dụ: "19 thg 8 – 10 thg 9, 2026")
   const dateRangeText = useMemo(() => {
@@ -480,6 +548,26 @@ export const App: React.FC = () => {
       return next;
     });
     showToast(`Đã thêm ${idStrings.length} ảnh vào Mục yêu thích ❤️`);
+  };
+
+  // Chuyển đổi Tab điều hướng và reset bộ lọc an toàn khi về Thư viện
+  const handleTabChange = (tabId: string) => {
+    if (tabId === "library") {
+      // Khi bấm vào Thư viện: luôn reset bộ lọc và từ khóa tìm kiếm để không bị ẩn ảnh
+      setActiveFilter("Tất cả");
+      setSearchQuery("");
+      // Nếu kho ảnh đang rỗng, đọc lại từ IndexedDB để hiển thị tức thì
+      if (photos.length === 0) {
+        getCachedPhotosFromDB().then((cached) => {
+          if (cached && cached.length > 0) {
+            setPhotos(cached);
+          } else {
+            loadPhotos(true);
+          }
+        });
+      }
+    }
+    setCurrentTab(tabId);
   };
 
   // Xóa hàng loạt nhiều ảnh cùng lúc
@@ -710,6 +798,30 @@ export const App: React.FC = () => {
         {/* TAB 1: THƯ VIỆN (LIBRARY) */}
         {currentTab === "library" && (
           <>
+            {/* Banner tiến trình tự động sao lưu ảnh nền */}
+            {isAutoSyncing && (
+              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 animate-pulse">
+                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-500" />
+                <span className="truncate">{autoSyncStatusText || "Đang tự động sao lưu ảnh mới từ iPhone lên Telegram..."}</span>
+              </div>
+            )}
+
+            {/* Chip hiển thị bộ lọc đang kích hoạt kèm nút xóa lọc nhanh */}
+            {activeFilter !== "Tất cả" && (
+              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold bg-blue-500/15 border border-blue-500/30 text-blue-400 shadow-sm">
+                <span>
+                  Đang lọc: <strong>{activeFilter === "Album" ? "Bộ sưu tập (Carousels)" : activeFilter}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("Tất cả")}
+                  className="font-bold underline text-xs text-blue-300 hover:text-white active:scale-95 transition-transform"
+                >
+                  Xem tất cả ảnh Thư viện ✕
+                </button>
+              </div>
+            )}
+
             {loading && (
               <div
                 className={`flex items-center justify-center py-10 gap-2 text-base font-semibold ${
@@ -721,22 +833,6 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {activeFilter === "Yêu thích" && filteredPhotos.length === 0 && !loading && (
-              <div className="p-8 text-center my-12">
-                <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto mb-3">
-                  <Heart className="w-8 h-8 fill-red-500/30" />
-                </div>
-                <h3 className="font-bold text-lg mb-1">Chưa có ảnh yêu thích</h3>
-                <p
-                  className={`text-sm max-w-xs mx-auto ${
-                    isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                  }`}
-                >
-                  Hãy mở bất kỳ bức ảnh nào và chạm vào biểu tượng trái tim để thêm vào đây.
-                </p>
-              </div>
-            )}
-
             <PhotoGrid
               groups={groupedPhotos}
               onSelectPhoto={(p) => setSelectedPhoto(p)}
@@ -744,6 +840,8 @@ export const App: React.FC = () => {
               isSelectMode={isSelectMode}
               selectedPhotoIds={selectedPhotoIds}
               onToggleSelectPhoto={handleToggleSelectPhoto}
+              activeFilter={activeFilter}
+              onResetFilter={() => setActiveFilter("Tất cả")}
             />
           </>
         )}
@@ -1490,7 +1588,7 @@ export const App: React.FC = () => {
         /* iOS Bottom TabBar bình thường */
         <TabBar
           currentTab={currentTab}
-          onTabChange={setCurrentTab}
+          onTabChange={handleTabChange}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenAddPhoto={handleTriggerUpload}
           isDarkMode={isDarkMode}
@@ -1593,7 +1691,7 @@ export const App: React.FC = () => {
         onAutoSyncChange={handleAutoSyncChange}
         onTriggerSyncNow={() => {
           setIsSettingsOpen(false);
-          fileInputRef.current?.click();
+          executeAutoSync(true);
         }}
       />
     </div>

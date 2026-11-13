@@ -32,13 +32,13 @@ export const TabBar: React.FC<TabBarProps> = ({
       }}
       className="fixed inset-x-0 bottom-0 z-30 pointer-events-none px-4 flex items-end justify-center gap-3"
     >
-      {/* Viên nang lớn chứa các Tab chính với hiệu ứng kính mờ (Thiết kế Icon-only hiện đại, không vỡ layout) */}
+      {/* Viên nang lớn chứa các Tab chính với hiệu ứng kính mờ (Chiều cao 56px chuẩn xác đồng bộ) */}
       <nav
         style={{
           backdropFilter: "blur(28px)",
           WebkitBackdropFilter: "blur(28px)",
         }}
-        className={`pointer-events-auto flex items-center gap-1.5 rounded-full p-1.5 transition-all duration-200 border ${
+        className={`pointer-events-auto h-[56px] flex items-center gap-1.5 rounded-full px-2 transition-all duration-200 border ${
           isDarkMode
             ? "bg-[#18181c]/85 border-white/15 shadow-2xl shadow-black/90"
             : "bg-white/90 border-black/10 shadow-2xl shadow-black/15"
@@ -62,7 +62,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               onClick={handleClick}
               title={tab.label}
               aria-label={tab.label}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 ${
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 ${
                 isActive
                   ? isDarkMode
                     ? "bg-[#2c2c2e]/95 border border-white/20 text-[#ff375f] shadow-md"
@@ -86,16 +86,16 @@ export const TabBar: React.FC<TabBarProps> = ({
         })}
       </nav>
 
-      {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) đồng bộ kích thước */}
-      <div className="flex flex-col items-center gap-2 pointer-events-none">
-        {/* Nút Thêm ảnh (+) */}
+      {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) có chiều cao 56px bằng tuyệt đối với TabBar */}
+      <div className="flex flex-col items-center gap-2.5 pointer-events-none">
+        {/* Nút Thêm ảnh (+) - Kích thước 56px chuẩn bằng chiều cao TabBar */}
         <button
           onClick={onOpenAddPhoto}
           style={{
             backdropFilter: "blur(28px)",
             WebkitBackdropFilter: "blur(28px)",
           }}
-          className={`pointer-events-auto w-[52px] h-[52px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
+          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
             isDarkMode
               ? "bg-[#18181c]/85 border-white/15 shadow-2xl shadow-black/90 text-white hover:text-neutral-200"
               : "bg-white/90 border-black/10 shadow-2xl shadow-black/15 text-neutral-900 hover:text-black"
@@ -105,14 +105,14 @@ export const TabBar: React.FC<TabBarProps> = ({
           <Plus className="w-6 h-6 stroke-[2.6]" />
         </button>
 
-        {/* Nút Tìm kiếm hình tròn */}
+        {/* Nút Tìm kiếm hình tròn - Kích thước 56px chuẩn bằng chiều cao TabBar */}
         <button
           onClick={() => onTabChange("search")}
           style={{
             backdropFilter: "blur(28px)",
             WebkitBackdropFilter: "blur(28px)",
           }}
-          className={`pointer-events-auto w-[52px] h-[52px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
+          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
             isDarkMode
               ? isSearchActive
                 ? "bg-[#2c2c2e]/95 border-[#ff375f]/60 text-[#ff375f] shadow-2xl shadow-black/90"

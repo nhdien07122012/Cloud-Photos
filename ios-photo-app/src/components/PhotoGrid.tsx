@@ -9,6 +9,8 @@ interface PhotoGridProps {
   isSelectMode?: boolean;
   selectedPhotoIds?: Set<string | number>;
   onToggleSelectPhoto?: (photo: PhotoItem) => void;
+  activeFilter?: string;
+  onResetFilter?: () => void;
 }
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
@@ -18,10 +20,14 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   isSelectMode = false,
   selectedPhotoIds = new Set(),
   onToggleSelectPhoto,
+  activeFilter = "Tất cả",
+  onResetFilter,
 }) => {
   if (groups.length === 0) {
+    const isFiltered = activeFilter && activeFilter !== "Tất cả";
+
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
         <div
           className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-4 ${
             isDarkMode ? "bg-neutral-800 text-neutral-400" : "bg-neutral-200 text-neutral-600 shadow-sm"
@@ -30,11 +36,22 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           <ImagePlus className="w-10 h-10" />
         </div>
         <p className={`text-xl font-bold ${isDarkMode ? "text-neutral-200" : "text-neutral-800"}`}>
-          Chưa có ảnh nào trong kho
+          {isFiltered ? `Không có ảnh trong mục "${activeFilter}"` : "Chưa có ảnh nào trong kho"}
         </p>
         <p className={`text-sm mt-1.5 max-w-xs ${isDarkMode ? "text-neutral-400" : "text-neutral-500"}`}>
-          Chạm vào nút dấu cộng (+) bên dưới để chọn ảnh từ thư viện hoặc chụp ảnh mới tải lên Telegram!
+          {isFiltered
+            ? "Mục này hiện chưa có bức ảnh nào. Hãy chạm vào nút bên dưới để quay lại xem toàn bộ Thư viện ảnh."
+            : "Chạm vào nút dấu cộng (+) bên dưới để chọn ảnh từ thư viện hoặc chụp ảnh mới tải lên Telegram!"}
         </p>
+        {isFiltered && onResetFilter && (
+          <button
+            type="button"
+            onClick={onResetFilter}
+            className="mt-5 px-5 py-2.5 rounded-full text-sm font-bold bg-blue-600 text-white shadow-lg shadow-blue-600/30 active:scale-95 transition-transform"
+          >
+            Xem tất cả ảnh Thư viện
+          </button>
+        )}
       </div>
     );
   }

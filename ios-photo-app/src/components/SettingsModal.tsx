@@ -879,7 +879,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       isDarkMode ? "text-neutral-400" : "text-neutral-500"
                     }`}
                   >
-                    CloudPhotos v1.3 • Build 5
+                    CloudPhotos v1.3 • Build 6
                   </p>
                 </div>
               </div>
@@ -960,7 +960,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 5 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 6 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>
