@@ -4,6 +4,35 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 18)] - 2026-11-14
+- **Commit SHA**: Pending CI/CD
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi ảnh không load được (biểu tượng chấm hỏi màu xanh `[?]`):
+     - **Nguyên nhân gốc rễ**: Khi đọc tin nhắn tải lên dạng file qua GramJS, cờ `{ thumb: 2 }` vượt quá số lượng thumbnail thực tế của tài liệu/ảnh, khiến GramJS trả về `Buffer.alloc(0)` (buffer 0 bytes). Buffer rỗng này bị lưu vào IndexedDB và tạo ra `Blob URL` 0 bytes, khiến WebKit Safari trên iPhone không thể giải mã và hiển thị ô xám kèm icon `[?]`.
+     - **Giải pháp xử lý**:
+       + Triển khai cơ chế tải thumbnail 3 cấp độ thông minh trong `telegramClient.ts`: Cấp 1 (`thumb: 1`), Cấp 2 (`thumb: 0`), Cấp 3 (tải media trực tiếp). Chỉ lưu vào cache khi dung lượng `buffer >= 100 bytes`.
+       + `photoStorage.ts`: Tự động nhận diện MIME type từ Magic Bytes (JPEG, PNG, WebP, GIF), từ chối lưu dữ liệu rác `< 100 bytes` và tự động quét/dọn dẹp sạch các bản ghi hỏng 0-byte cũ trong IndexedDB ngay khi mở ứng dụng.
+       + `uploadService.ts`: Bổ sung `forceDocument: false` để Telegram máy chủ luôn nhận diện file là Photo và tự động sinh thumbnail chất lượng cao.
+       + `PhotoGrid.tsx`: Bổ sung cơ chế tự phục hồi lỗi (`handleImageError`) tự động kết nối Telegram để nạp lại ảnh đơn lẻ (`reloadSinglePhotoFromTelegram`) thay vì để ô lỗi `[?]`.
+  2. Loại bỏ hoàn toàn tính năng sao lưu tự động (Chuyển sang 100% người dùng tự chọn tải ảnh):
+     - Gỡ bỏ hoàn toàn tiến trình tự động quét ngầm thư viện máy và các banner trạng thái quét trong `App.tsx`.
+     - Người dùng hoàn toàn làm chủ kho ảnh: Chỉ tải lên những ảnh do người dùng chủ động chọn qua nút bấm (+) nổi bật hoặc mục Cài đặt.
+     - Cập nhật Thẻ Cài đặt: Chuyển thẻ Sao lưu thành "📤 Tải ảnh lên Telegram (Chủ động)" với nút chọn nhiều ảnh trực tiếp từ iPhone và nút làm mới danh sách ảnh.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/photoStorage.ts`: Phát hiện MIME type, chống lưu và tự dọn dẹp bản ghi 0-byte.
+  - `ios-photo-app/src/services/telegramClient.ts`: Fallback 3 cấp độ khi tải media, bổ sung `reloadSinglePhotoFromTelegram`.
+  - `ios-photo-app/src/services/uploadService.ts`: Bổ sung `forceDocument: false`, bảo lưu thumbnail hợp lệ.
+  - `ios-photo-app/src/components/PhotoGrid.tsx`: Tự động phục hồi ảnh lỗi không load được, giao diện placeholder tinh tế.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Chuyển sang giao diện Tải ảnh thủ công chủ động, nâng cấp Build 18.
+  - `ios-photo-app/src/App.tsx`: Gỡ bỏ tiến trình quét ngầm, kết nối `onRetryPhoto`, tinh giản luồng tải ảnh.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `18`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 17)] - 2026-11-14
 - **Commit SHA**: `80a8944`
 - **Mục tiêu**:

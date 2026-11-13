@@ -7,6 +7,7 @@ import {
   fetchChannelPhotos,
   deleteTelegramPhoto,
   deleteMultipleTelegramPhotos,
+  reloadSinglePhotoFromTelegram,
 } from "./services/telegramClient";
 import {
   getCachedPhotosFromDB,
@@ -14,7 +15,7 @@ import {
   removeMultiplePhotosFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
-import { runAutoSync, removeSyncedDeviceIdsByFilenames } from "./services/autoSyncService";
+import { removeSyncedDeviceIdsByFilenames } from "./services/autoSyncService";
 import {
   getUserAlbums,
   createNewAlbum,
@@ -80,70 +81,24 @@ export const App: React.FC = () => {
   const [isAddPhotosModalOpen, setIsAddPhotosModalOpen] = useState(false);
   const [selectedPhotoIdsForAlbum, setSelectedPhotoIdsForAlbum] = useState<Set<string | number>>(new Set());
 
-  // Manual Sync Engine (Chế độ sao lưu thủ công an toàn)
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatusText, setSyncStatusText] = useState("");
-  const isSyncingRef = useRef(false);
-
-  const executeManualSync = async (force = true) => {
-    if (isSyncingRef.current) {
-      showToast("Tiến trình sao lưu đang thực hiện...");
-      return;
-    }
-    if (!config.isLoggedIn && !config.sessionString) {
-      showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
-      return;
-    }
-    isSyncingRef.current = true;
-    showToast("Đang quét thư viện ảnh iPhone...");
-
-    // Watchdog an toàn: tự động reset khi có tiến trình mới, chỉ giải phóng nếu mạng bị treo cứng quá 45 giây
-    let watchdogTimer: any = null;
-    const resetWatchdog = () => {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-      watchdogTimer = setTimeout(() => {
-        isSyncingRef.current = false;
-        setIsSyncing(false);
-        setSyncStatusText("");
-      }, 45000);
-    };
-    resetWatchdog();
-
+  // Tự động khôi phục ảnh lỗi khi không load được từ Telegram
+  const handleRetryPhoto = async (photo: PhotoItem): Promise<string | null> => {
     try {
-      const res = await runAutoSync(
-        config,
-        (current, total, file) => {
-          resetWatchdog();
-          setIsSyncing(true);
-          setSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
-        },
-        photos, // Đối soát với danh sách ảnh đang có trên Telegram
-        { force }
-      );
-      if (res.syncedCount > 0) {
-        showToast(res.message);
-        if (res.newUploadedPhotos && res.newUploadedPhotos.length > 0) {
-          setPhotos((prev) => {
-            const map = new Map<number, PhotoItem>();
-            prev.forEach((p) => map.set(p.messageId, p));
-            res.newUploadedPhotos!.forEach((p) => map.set(p.messageId, p));
-            const merged = Array.from(map.values());
-            merged.sort((a, b) => b.date.getTime() - a.date.getTime());
-            return merged;
-          });
-        }
-      } else {
-        showToast(res.message);
+      const newUrl = await reloadSinglePhotoFromTelegram(config, photo.messageId);
+      if (newUrl) {
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.messageId === photo.messageId
+              ? { ...p, url: newUrl, thumbnailUrl: newUrl }
+              : p
+          )
+        );
+        return newUrl;
       }
-    } catch (e: any) {
-      console.error("Manual sync error:", e);
-      showToast("Lỗi sao lưu: " + (e.message || ""));
-    } finally {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-      isSyncingRef.current = false;
-      setIsSyncing(false);
-      setSyncStatusText("");
+    } catch (e) {
+      console.warn("Lỗi nạp lại ảnh đơn lẻ:", e);
     }
+    return null;
   };
 
   // Theme State (Dark / Light / System)
@@ -847,14 +802,6 @@ export const App: React.FC = () => {
         {/* TAB 1: THƯ VIỆN (LIBRARY) */}
         {currentTab === "library" && (
           <>
-            {/* Banner tiến trình sao lưu ảnh thủ công */}
-            {isSyncing && syncStatusText && (
-              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 animate-in fade-in duration-200 shadow-sm">
-                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-400" />
-                <span className="truncate">{syncStatusText}</span>
-              </div>
-            )}
-
             {/* Chip hiển thị bộ lọc đang kích hoạt kèm nút xóa lọc nhanh */}
             {activeFilter !== "Tất cả" && (
               <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold bg-blue-500/15 border border-blue-500/30 text-blue-400 shadow-sm animate-in fade-in duration-200">
@@ -864,7 +811,7 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setActiveFilter("Tất cả")}
-                  className="font-bold underline text-xs text-blue-300 hover:text-white active:scale-95 transition-transform"
+                  className="font-bold underline text-xs text-blue-300 hover:text-white active:scale-95 transition-transform cursor-pointer"
                 >
                   Xem tất cả ảnh ✕
                 </button>
@@ -891,6 +838,7 @@ export const App: React.FC = () => {
               onToggleSelectPhoto={handleToggleSelectPhoto}
               activeFilter={activeFilter}
               onResetFilter={() => setActiveFilter("Tất cả")}
+              onRetryPhoto={handleRetryPhoto}
             />
           </>
         )}
@@ -1673,9 +1621,13 @@ export const App: React.FC = () => {
         theme={theme}
         onThemeChange={handleThemeChange}
         isDarkMode={isDarkMode}
-        onTriggerSyncNow={(force) => {
+        onOpenUploadPicker={() => {
           setIsSettingsOpen(false);
-          executeManualSync(force ?? true);
+          fileInputRef.current?.click();
+        }}
+        onRefreshPhotos={() => {
+          setIsSettingsOpen(false);
+          loadPhotos(true);
         }}
       />
     </div>

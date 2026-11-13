@@ -26,6 +26,19 @@ interface StoredPhotoRecord {
 const objectUrlMap = new Map<number, string>();
 const hdUrlMap = new Map<number, string>();
 
+/**
+ * Nhận diện MIME Type thực tế từ Magic Bytes của ảnh (JPEG, PNG, WebP, GIF)
+ */
+function detectMimeType(buf: ArrayBuffer): string {
+  if (!buf || buf.byteLength < 4) return "image/jpeg";
+  const u8 = new Uint8Array(buf.slice(0, 12));
+  if (u8[0] === 0xff && u8[1] === 0xd8) return "image/jpeg";
+  if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) return "image/png";
+  if (u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46) return "image/webp";
+  if (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46) return "image/gif";
+  return "image/jpeg";
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined" || !window.indexedDB) {
@@ -49,6 +62,7 @@ function openDatabase(): Promise<IDBDatabase> {
 
 /**
  * Đọc toàn bộ ảnh từ IndexedDB và chuyển sang PhotoItem để hiển thị tức thì
+ * Tự động loại bỏ và dọn dẹp các bản ghi rác 0-byte (chống lỗi ảnh [?] trên iPhone)
  */
 export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
   try {
@@ -63,15 +77,31 @@ export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
         // Sắp xếp bài mới nhất lên trước (timestamp giảm dần)
         records.sort((a, b) => b.timestamp - a.timestamp);
 
-        const photos: PhotoItem[] = records.map((rec) => {
+        const validPhotos: PhotoItem[] = [];
+        const corruptIdsToDelete: number[] = [];
+
+        for (const rec of records) {
+          const thumbLen = rec.thumbnailData ? rec.thumbnailData.byteLength : 0;
+          const hdLen = rec.hdData ? rec.hdData.byteLength : 0;
+
+          // Nếu cả thumbnailData và hdData đều không có dữ liệu hợp lệ (< 100 bytes), đây là bản ghi rác!
+          if (thumbLen < 100 && hdLen < 100) {
+            corruptIdsToDelete.push(rec.messageId);
+            continue;
+          }
+
+          // Ưu tiên thumbnail, fallback sang HD nếu thumbnail hỏng
+          const validBuffer = thumbLen >= 100 ? rec.thumbnailData : rec.hdData!;
+          const mimeType = detectMimeType(validBuffer);
+
           let url = objectUrlMap.get(rec.messageId);
           if (!url) {
-            const blob = new Blob([rec.thumbnailData], { type: "image/jpeg" });
+            const blob = new Blob([validBuffer], { type: mimeType });
             url = URL.createObjectURL(blob);
             objectUrlMap.set(rec.messageId, url);
           }
 
-          return {
+          validPhotos.push({
             id: rec.id,
             messageId: rec.messageId,
             url,
@@ -82,10 +112,18 @@ export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
             groupedId: rec.groupedId,
             date: new Date(rec.timestamp),
             isCarousel: rec.isCarousel,
-          };
-        });
+          });
+        }
 
-        resolve(photos);
+        // Tự động dọn dẹp các bản ghi hỏng chạy nền để không chiếm bộ nhớ
+        if (corruptIdsToDelete.length > 0) {
+          console.warn(
+            `[photoStorage] Đã tự động dọn dẹp ${corruptIdsToDelete.length} bản ghi rác 0-byte khỏi IndexedDB.`
+          );
+          removeMultiplePhotosFromCache(corruptIdsToDelete);
+        }
+
+        resolve(validPhotos);
       };
 
       request.onerror = () => reject(request.error);
@@ -98,21 +136,30 @@ export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
 
 /**
  * Kiểm tra danh sách messageId đã có trong IndexedDB
+ * Chỉ tính các bản ghi có dung lượng thực sự hợp lệ (> 100 bytes)
  */
 export async function getCachedMessageIds(): Promise<Set<number>> {
   try {
     const db = await openDatabase();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const tx = db.transaction(STORE_NAME, "readonly");
       const store = tx.objectStore(STORE_NAME);
-      const request = store.getAllKeys();
+      const request = store.getAll();
 
       request.onsuccess = () => {
-        const keys = request.result as number[];
-        resolve(new Set(keys));
+        const records = (request.result || []) as StoredPhotoRecord[];
+        const validSet = new Set<number>();
+        for (const r of records) {
+          const tLen = r.thumbnailData ? r.thumbnailData.byteLength : 0;
+          const hLen = r.hdData ? r.hdData.byteLength : 0;
+          if (tLen >= 100 || hLen >= 100) {
+            validSet.add(r.messageId);
+          }
+        }
+        resolve(validSet);
       };
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => resolve(new Set());
     });
   } catch {
     return new Set();
@@ -120,7 +167,7 @@ export async function getCachedMessageIds(): Promise<Set<number>> {
 }
 
 /**
- * Lưu 1 ảnh vào IndexedDB
+ * Lưu 1 ảnh vào IndexedDB (Tuyệt đối từ chối lưu dữ liệu rác < 100 bytes)
  */
 export async function savePhotoToCache(
   item: Omit<StoredPhotoRecord, "thumbnailData" | "hdData"> & {
@@ -129,10 +176,6 @@ export async function savePhotoToCache(
   }
 ): Promise<void> {
   try {
-    const db = await openDatabase();
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-
     // Chuyển sang ArrayBuffer sạch
     const buffer =
       item.thumbnailData instanceof ArrayBuffer
@@ -141,6 +184,14 @@ export async function savePhotoToCache(
             item.thumbnailData.byteOffset,
             item.thumbnailData.byteOffset + item.thumbnailData.byteLength
           );
+
+    // Kiểm tra dung lượng hợp lệ: File ảnh JPEG/PNG hợp lệ luôn luôn >= 100 bytes
+    if (!buffer || buffer.byteLength < 100) {
+      console.warn(
+        `[photoStorage] Từ chối lưu bản ghi 0-byte cho tin nhắn ${item.messageId} (kích thước: ${buffer?.byteLength || 0} bytes)`
+      );
+      return;
+    }
 
     let cleanHdData: ArrayBuffer | undefined = undefined;
     if (item.hdData) {
@@ -159,6 +210,9 @@ export async function savePhotoToCache(
       hdData: cleanHdData,
     };
 
+    const db = await openDatabase();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
     store.put(record);
   } catch (e) {
     console.warn(`Lỗi lưu cache tin nhắn ${item.messageId}:`, e);
@@ -182,8 +236,9 @@ export async function getCachedHdPhoto(messageId: number): Promise<string | null
 
       request.onsuccess = () => {
         const record = request.result as StoredPhotoRecord | undefined;
-        if (record && record.hdData) {
-          const blob = new Blob([record.hdData], { type: "image/jpeg" });
+        if (record && record.hdData && record.hdData.byteLength >= 100) {
+          const mimeType = detectMimeType(record.hdData);
+          const blob = new Blob([record.hdData], { type: mimeType });
           const url = URL.createObjectURL(blob);
           hdUrlMap.set(messageId, url);
           resolve(url);
@@ -214,25 +269,28 @@ export async function saveHdPhotoToCache(
           hdBuffer.byteOffset + hdBuffer.byteLength
         );
 
-  const blob = new Blob([buffer as ArrayBuffer], { type: "image/jpeg" });
+  const mimeType = detectMimeType(buffer as ArrayBuffer);
+  const blob = new Blob([buffer as ArrayBuffer], { type: mimeType });
   const url = URL.createObjectURL(blob);
   hdUrlMap.set(messageId, url);
 
-  try {
-    const db = await openDatabase();
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const getReq = store.get(messageId);
+  if (buffer.byteLength >= 100) {
+    try {
+      const db = await openDatabase();
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const getReq = store.get(messageId);
 
-    getReq.onsuccess = () => {
-      const record = getReq.result as StoredPhotoRecord | undefined;
-      if (record) {
-        record.hdData = buffer as ArrayBuffer;
-        store.put(record);
-      }
-    };
-  } catch (e) {
-    console.warn("Lỗi lưu ảnh HD vào cache:", e);
+      getReq.onsuccess = () => {
+        const record = getReq.result as StoredPhotoRecord | undefined;
+        if (record) {
+          record.hdData = buffer as ArrayBuffer;
+          store.put(record);
+        }
+      };
+    } catch (e) {
+      console.warn("Lỗi lưu ảnh HD vào cache:", e);
+    }
   }
 
   return url;
@@ -252,12 +310,17 @@ export async function getCacheStats(): Promise<{ count: number; sizeMB: string }
       request.onsuccess = () => {
         const records = (request.result || []) as StoredPhotoRecord[];
         let totalBytes = 0;
+        let validCount = 0;
         for (const rec of records) {
-          if (rec.thumbnailData) totalBytes += rec.thumbnailData.byteLength || 0;
-          if (rec.hdData) totalBytes += rec.hdData.byteLength || 0;
+          const t = rec.thumbnailData ? rec.thumbnailData.byteLength : 0;
+          const h = rec.hdData ? rec.hdData.byteLength : 0;
+          if (t >= 100 || h >= 100) {
+            totalBytes += t + h;
+            validCount++;
+          }
         }
         const sizeMB = (totalBytes / (1024 * 1024)).toFixed(1);
-        resolve({ count: records.length, sizeMB });
+        resolve({ count: validCount, sizeMB });
       };
 
       request.onerror = () => resolve({ count: 0, sizeMB: "0" });

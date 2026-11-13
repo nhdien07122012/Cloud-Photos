@@ -7,7 +7,6 @@ import {
   Lock,
   LogOut,
   RefreshCw,
-  RotateCcw,
   Database,
   Trash2,
   Moon,
@@ -39,7 +38,8 @@ interface SettingsModalProps {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   isDarkMode: boolean;
-  onTriggerSyncNow?: (force?: boolean) => void;
+  onOpenUploadPicker?: () => void;
+  onRefreshPhotos?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -51,7 +51,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   theme,
   onThemeChange,
   isDarkMode,
-  onTriggerSyncNow,
+  onOpenUploadPicker,
+  onRefreshPhotos,
 }) => {
   const [formData, setFormData] = useState<TelegramConfig>(config);
   const [phone, setPhone] = useState(config.phoneNumber || "");
@@ -275,7 +276,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="space-y-4">
           {/* ======================================================== */}
-          {/* THẺ 1: SAO LƯU THỦ CÔNG (MANUAL BACKUP HERO CARD)        */}
+          {/* THẺ 1: TẢI ẢNH LÊN TELEGRAM (MANUAL PHOTO UPLOAD)        */}
           {/* ======================================================== */}
           <div
             className={`p-5 rounded-3xl border transition-all ${
@@ -290,19 +291,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold">Sao lưu ảnh lên Telegram</h3>
+                  <h3 className="text-base font-bold">Tải ảnh lên Telegram</h3>
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    Thủ công
+                    Chủ động
                   </span>
                 </div>
                 <p className={`text-xs mt-0.5 ${isDarkMode ? "text-neutral-400" : "text-neutral-500"}`}>
-                  Chỉ sao lưu khi bạn bấm nút • Không chạy ngầm hao pin
+                  Chỉ tải các ảnh bạn tự chọn • Không quét ngầm thiết bị
                 </p>
               </div>
             </div>
 
             <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? "text-neutral-300" : "text-neutral-600"}`}>
-              Quét các bức ảnh mới từ Camera Roll của iPhone và tải trực tiếp lên Kênh Telegram lưu trữ đám mây an toàn.
+              Chọn các bức ảnh bạn muốn lưu trữ từ iPhone để tải lên Kênh Telegram đám mây riêng tư, không giới hạn dung lượng và giữ nguyên chất lượng.
             </p>
 
             <div className="flex flex-col gap-2.5">
@@ -310,29 +311,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  if (onTriggerSyncNow) onTriggerSyncNow(true);
+                  if (onOpenUploadPicker) onOpenUploadPicker();
                 }}
-                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
               >
-                <RefreshCw className="w-4 h-4" />
-                Bắt đầu quét & sao lưu ngay
+                <Upload className="w-4 h-4" />
+                Chọn ảnh từ máy để tải lên ngay
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  resetSyncedDeviceIds();
                   onClose();
-                  if (onTriggerSyncNow) onTriggerSyncNow(true);
+                  if (onRefreshPhotos) onRefreshPhotos();
                 }}
-                className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all border ${
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all border cursor-pointer ${
                   isDarkMode
                     ? "border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-300"
                     : "border-neutral-200 bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
                 }`}
               >
-                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                Làm mới lịch sử & quét lại toàn bộ ảnh
+                <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                Làm mới danh sách ảnh từ Telegram
               </button>
             </div>
           </div>
@@ -727,7 +727,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25 block">
-                Build 17
+                Build 18
               </span>
               <span className="text-[10px] text-neutral-500 block mt-0.5">iOS Native</span>
             </div>
@@ -745,7 +745,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 17 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 18 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

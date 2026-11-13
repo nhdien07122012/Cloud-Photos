@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import type { PhotoItem, DateGroup } from "../types";
-import { Layers, ImagePlus, Check } from "lucide-react";
+import { Layers, ImagePlus, Check, RefreshCw, Image as ImageIcon } from "lucide-react";
 
 interface PhotoGridProps {
   groups: DateGroup[];
@@ -11,6 +11,7 @@ interface PhotoGridProps {
   onToggleSelectPhoto?: (photo: PhotoItem) => void;
   activeFilter?: string;
   onResetFilter?: () => void;
+  onRetryPhoto?: (photo: PhotoItem) => Promise<string | null>;
 }
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
@@ -22,7 +23,42 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onToggleSelectPhoto,
   activeFilter = "Tất cả",
   onResetFilter,
+  onRetryPhoto,
 }) => {
+  // Trạng thái theo dõi các ảnh bị lỗi để tự động khôi phục
+  const [retryingIds, setRetryingIds] = useState<Set<number>>(new Set());
+  const [failedIds, setFailedIds] = useState<Set<number>>(new Set());
+
+  const handleImageError = (photo: PhotoItem) => {
+    const msgId = photo.messageId;
+    if (retryingIds.has(msgId) || failedIds.has(msgId)) return;
+
+    if (onRetryPhoto) {
+      setRetryingIds((prev) => new Set(prev).add(msgId));
+      onRetryPhoto(photo)
+        .then((newUrl) => {
+          if (newUrl) {
+            photo.url = newUrl;
+            photo.thumbnailUrl = newUrl;
+          } else {
+            setFailedIds((prev) => new Set(prev).add(msgId));
+          }
+        })
+        .catch(() => {
+          setFailedIds((prev) => new Set(prev).add(msgId));
+        })
+        .finally(() => {
+          setRetryingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(msgId);
+            return next;
+          });
+        });
+    } else {
+      setFailedIds((prev) => new Set(prev).add(msgId));
+    }
+  };
+
   if (groups.length === 0) {
     const isFiltered = activeFilter && activeFilter !== "Tất cả";
 
@@ -41,7 +77,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         <p className={`text-sm mt-1.5 max-w-xs ${isDarkMode ? "text-neutral-400" : "text-neutral-500"}`}>
           {isFiltered
             ? "Mục này hiện chưa có bức ảnh nào. Hãy chạm vào nút bên dưới để quay lại xem toàn bộ Thư viện ảnh."
-            : "Chạm vào nút dấu cộng (+) bên dưới để chọn ảnh từ thư viện hoặc chụp ảnh mới tải lên Telegram!"}
+            : "Chạm vào nút dấu cộng (+) bên dưới để chọn ảnh từ máy tải lên Telegram!"}
         </p>
         {isFiltered && onResetFilter && (
           <button
@@ -68,11 +104,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                 : "bg-[#f2f2f7]/85 text-neutral-900 border-b border-neutral-200/50"
             }`}
           >
-            <h2 className="text-lg sm:text-xl font-extrabold tracking-tight">
-              {group.dateTitle}
-            </h2>
+            <h3 className="text-xl sm:text-2xl font-black tracking-tight">{group.dateTitle}</h3>
             <span
-              className={`text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-full ${
+              className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-full ${
                 isDarkMode ? "bg-neutral-800 text-neutral-300" : "bg-neutral-200 text-neutral-700"
               }`}
             >
@@ -85,6 +119,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             {group.photos.map((photo) => {
               const isSelected =
                 selectedPhotoIds.has(photo.id) || selectedPhotoIds.has(photo.messageId);
+              const isRetrying = retryingIds.has(photo.messageId);
+              const isFailed = failedIds.has(photo.messageId);
 
               const handleClick = () => {
                 if (isSelectMode && onToggleSelectPhoto) {
@@ -102,14 +138,29 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                     isDarkMode ? "bg-neutral-900" : "bg-neutral-200"
                   } ${isSelectMode && isSelected ? "p-1 bg-blue-600 rounded-xl" : ""}`}
                 >
-                  <img
-                    src={photo.thumbnailUrl || photo.url}
-                    alt={photo.caption || "Cloud photo"}
-                    className={`w-full h-full object-cover select-none pointer-events-none transform transition-transform ${
-                      isSelectMode && isSelected ? "rounded-lg" : "group-active:scale-98"
-                    }`}
-                    loading="lazy"
-                  />
+                  {isRetrying ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-neutral-800/80 text-neutral-400">
+                      <RefreshCw className="w-5 h-5 animate-spin text-blue-400 mb-1" />
+                      <span className="text-[10px] font-semibold text-center truncate">Đang nạp ảnh...</span>
+                    </div>
+                  ) : isFailed ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-neutral-800/50 text-neutral-400">
+                      <ImageIcon className="w-6 h-6 text-neutral-500 mb-1" />
+                      <span className="text-[10px] text-center font-medium truncate max-w-full">
+                        {photo.caption || "Ảnh đám mây"}
+                      </span>
+                    </div>
+                  ) : (
+                    <img
+                      src={photo.thumbnailUrl || photo.url}
+                      alt=""
+                      onError={() => handleImageError(photo)}
+                      className={`w-full h-full object-cover select-none pointer-events-none transform transition-transform ${
+                        isSelectMode && isSelected ? "rounded-lg" : "group-active:scale-98"
+                      }`}
+                      loading="lazy"
+                    />
+                  )}
 
                   {/* Badge Carousel (Nhiều ảnh) */}
                   {photo.isCarousel && !isSelectMode && (

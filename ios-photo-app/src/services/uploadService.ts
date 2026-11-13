@@ -163,27 +163,29 @@ export async function uploadPhotosToTelegram(
         nodeBuffer
       );
 
-      // Upload trực tiếp với workers: 1 đảm bảo độ ổn định cao trên iPhone
+      // Upload trực tiếp dưới dạng Photo chuẩn Telegram để tự động sinh thumbnail máy chủ
       const sentMessage: any = await client.sendFile(targetPeer, {
         file: customFile,
         caption: captionText,
+        forceDocument: false,
         workers: 1,
       });
 
       const messageId = sentMessage?.id || Date.now();
 
       // 4. Lưu ngay thumbnail và ảnh gốc vào IndexedDB cục bộ của máy
+      const validThumb = thumbBuffer && thumbBuffer.byteLength >= 100 ? thumbBuffer : rawBuffer;
       await savePhotoToCache({
         messageId,
         id: `tg-${messageId}`,
-        thumbnailData: thumbBuffer,
+        thumbnailData: validThumb,
         hdData: rawBuffer,
         caption: file.name,
         timestamp: fileDate.getTime(),
         isCarousel: false,
       });
 
-      const blob = new Blob([thumbBuffer], { type: "image/jpeg" });
+      const blob = new Blob([validThumb], { type: file.type || "image/jpeg" });
       const url = URL.createObjectURL(blob);
 
       uploadedPhotos.push({

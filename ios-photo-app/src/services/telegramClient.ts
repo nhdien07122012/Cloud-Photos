@@ -335,9 +335,30 @@ export async function fetchChannelPhotos(
       if (cachedIds.has(msg.id)) continue;
 
       try {
-        // Tải thumbnail sắc nét (thumb: 2 ~800px) cho Retina màn hình iPhone
-        const buffer = await client.downloadMedia(msg.media, { thumb: 2 });
-        if (buffer) {
+        // Tải thumbnail an toàn với cơ chế fallback 3 cấp độ (chống lỗi buffer 0-byte)
+        let buffer: any = null;
+
+        // Cấp 1: Thử lấy thumbnail cỡ trung (thumb: 1)
+        try {
+          buffer = await client.downloadMedia(msg.media, { thumb: 1 });
+        } catch {}
+
+        // Cấp 2: Nếu chưa có hoặc < 100 bytes, thử thumb 0
+        if (!buffer || buffer.length < 100) {
+          try {
+            buffer = await client.downloadMedia(msg.media, { thumb: 0 });
+          } catch {}
+        }
+
+        // Cấp 3: Nếu vẫn chưa có hoặc < 100 bytes (ví dụ file document), tải trực tiếp media gốc
+        if (!buffer || buffer.length < 100) {
+          try {
+            buffer = await client.downloadMedia(msg.media);
+          } catch {}
+        }
+
+        // Chỉ lưu vào IndexedDB khi buffer thực sự hợp lệ (>= 100 bytes)
+        if (buffer && buffer.length >= 100) {
           // Trích xuất ngày chụp ảnh gốc từ caption nếu có (tag [YYYY-MM-DD] hoặc 📅 DD/MM/YYYY)
           let photoTimestamp = msg.date * 1000;
           if (msg.message) {
@@ -421,6 +442,16 @@ export async function fetchFullResolutionPhoto(
     console.warn(`Lỗi tải ảnh gốc tin nhắn ${messageId}:`, err);
   }
   return null;
+}
+
+/**
+ * Tải lại ảnh bị lỗi hiển thị trực tiếp từ Telegram (tự phục hồi)
+ */
+export async function reloadSinglePhotoFromTelegram(
+  config: TelegramConfig,
+  messageId: number
+): Promise<string | null> {
+  return await fetchFullResolutionPhoto(config, messageId);
 }
 
 /**
