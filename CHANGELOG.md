@@ -21,6 +21,8 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
   - `ios-photo-app/src/App.css`: Dọn dẹp toàn bộ mã CSS dư thừa của Vite template.
   - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `2`, `MARKETING_VERSION` lên `1.1`.
   - `ios-photo-app/package.json`: Tăng version lên `1.1.0`.
+  - `.github/workflows/build-ipa.yml`: Tích hợp tự động phát hành Release `latest` kèm link tải trực tiếp 1-chạm file `CloudPhotos.ipa` không cần tìm trên GitHub.
+  - `PROJECT_RULES.md`: Bổ sung Điều 5 quy định bắt buộc cung cấp link tải trực tiếp file IPA sau mỗi lần build.
 - **Lệnh hoàn tác mẫu (Rollback)**:
   ```bash
   git revert HEAD --no-edit

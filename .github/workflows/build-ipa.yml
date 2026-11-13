@@ -9,6 +9,8 @@ jobs:
   build:
     name: Build CloudPhotos IPA
     runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -66,3 +68,16 @@ jobs:
           name: CloudPhotos.ipa
           path: ios-photo-app/ios/App/CloudPhotos.ipa
           if-no-files-found: error
+
+      - name: Publish Latest IPA Release for Direct Download
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')
+        with:
+          tag_name: latest
+          name: "CloudPhotos Latest Build"
+          body: |
+            🚀 **Bản dựng CloudPhotos IPA mới nhất tự động từ CI/CD**
+            - Tải trực tiếp file `.ipa` bên dưới để cài đặt qua TrollStore / Sideloadly / AltStore.
+          files: ios-photo-app/ios/App/CloudPhotos.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
