@@ -4,6 +4,24 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 5)] - 2026-11-13
+- **Commit SHA**: `3e567cb`
+- **Mục tiêu**: Tinh chỉnh và sửa triệt để lỗi vỡ layout TabBar (loại bỏ chữ text bên dưới icon để chuyển sang thiết kế Icon-Only Floating Dock hiện đại, loại bỏ hoàn toàn tình trạng rớt dòng chữ và tràn viên nang active), đồng thời cân bằng kích thước các nút nổi Thêm (+) và Tìm kiếm để tạo sự đồng bộ cân đối trên màn hình iPhone.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/TabBar.tsx`:
+    - Chuyển 4 tab chính (Thư viện, Kỷ niệm, Album, Cài đặt) sang dạng **Icon-Only**: mỗi tab là một nút tròn tỉ lệ 1:1 (`w-12 h-12`), loại bỏ chữ nhãn text phía dưới giúp loại trừ 100% hiện tượng chữ bị bẻ xuống 2 dòng (*"Thư \n viện"*, *"Kỷ \n niệm"*, *"Cài \n đặt"*).
+    - Tab active hiển thị dạng viên nang tròn hoàn hảo (`rounded-full`), không còn bị phình hay lồi ra ngoài viền thanh dock.
+    - Cân chỉnh kích thước 2 nút tròn nổi bên phải (Thêm `+` và Tìm kiếm) về `52px × 52px` để thẳng hàng đáy hoàn hảo với viên nang điều hướng chính.
+    - Giữ nguyên đầy đủ `title` và `aria-label` cho trợ năng và nhận diện.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Đồng bộ số hiệu bản dựng `CloudPhotos v1.3 • Build 5`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `5`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 4)] - 2026-11-13
 - **Commit SHA**: `86d02d8`
 - **Mục tiêu**: Tái thiết kế toàn diện khu vực Header theo phong cách Apple Photos iOS 18 (loại bỏ thanh phân đoạn cũ, đổi tên thành "Thư viện" kèm hiển thị khoảng thời gian lớn), tích hợp Menu popover kính mờ chuẩn iOS (Sắp xếp theo Đã thêm gần đây / Ngày chụp có dấu tích, Lọc nội dung, Tùy chọn xem), bổ sung chế độ Chọn ("Chọn" / "Xong") và Xóa hàng loạt nhiều ảnh cùng một lần trên cả Telegram Channel và IndexedDB, đồng thời phóng to typography và toàn bộ nút bấm cảm ứng (TabBar, Floating Button, Header) giúp thao tác ngón tay cực kỳ dễ dàng.
