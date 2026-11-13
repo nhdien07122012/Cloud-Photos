@@ -218,30 +218,97 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Submenu Lọc */}
                 {showFilterSubmenu && (
                   <div className="mt-1 ml-6 pl-2 border-l border-neutral-700/60 space-y-1 py-1">
+                    <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                      Theo thời gian
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         onFilterChange("Tất cả");
                         setIsMenuOpen(false);
                       }}
-                      className={`w-full px-3 py-2 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
                         activeFilter === "Tất cả"
-                          ? "text-blue-400"
+                          ? "text-blue-400 bg-blue-500/10"
                           : "text-neutral-300 hover:text-white"
                       }`}
                     >
-                      <span>Tất cả</span>
+                      <span>Tất cả thời gian</span>
                       {activeFilter === "Tất cả" && <Check className="w-4 h-4 text-blue-400" />}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFilterChange("Hôm nay");
+                        setIsMenuOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                        activeFilter === "Hôm nay"
+                          ? "text-blue-400 bg-blue-500/10"
+                          : "text-neutral-300 hover:text-white"
+                      }`}
+                    >
+                      <span>Hôm nay</span>
+                      {activeFilter === "Hôm nay" && <Check className="w-4 h-4 text-blue-400" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFilterChange("7 ngày qua");
+                        setIsMenuOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                        activeFilter === "7 ngày qua"
+                          ? "text-blue-400 bg-blue-500/10"
+                          : "text-neutral-300 hover:text-white"
+                      }`}
+                    >
+                      <span>7 ngày gần đây</span>
+                      {activeFilter === "7 ngày qua" && <Check className="w-4 h-4 text-blue-400" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFilterChange("Tháng này");
+                        setIsMenuOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                        activeFilter === "Tháng này"
+                          ? "text-blue-400 bg-blue-500/10"
+                          : "text-neutral-300 hover:text-white"
+                      }`}
+                    >
+                      <span>Tháng này</span>
+                      {activeFilter === "Tháng này" && <Check className="w-4 h-4 text-blue-400" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFilterChange("Năm nay");
+                        setIsMenuOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                        activeFilter === "Năm nay"
+                          ? "text-blue-400 bg-blue-500/10"
+                          : "text-neutral-300 hover:text-white"
+                      }`}
+                    >
+                      <span>Năm nay</span>
+                      {activeFilter === "Năm nay" && <Check className="w-4 h-4 text-blue-400" />}
+                    </button>
+
+                    <div className="pt-2 mt-1 border-t border-neutral-700/50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                      Theo phân loại
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         onFilterChange("Yêu thích");
                         setIsMenuOpen(false);
                       }}
-                      className={`w-full px-3 py-2 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
                         activeFilter === "Yêu thích"
-                          ? "text-blue-400"
+                          ? "text-blue-400 bg-blue-500/10"
                           : "text-neutral-300 hover:text-white"
                       }`}
                     >
@@ -254,9 +321,9 @@ export const Header: React.FC<HeaderProps> = ({
                         onFilterChange("Album");
                         setIsMenuOpen(false);
                       }}
-                      className={`w-full px-3 py-2 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
+                      className={`w-full px-3 py-1.5 rounded-xl text-left text-sm font-semibold flex items-center justify-between ${
                         activeFilter === "Album"
-                          ? "text-blue-400"
+                          ? "text-blue-400 bg-blue-500/10"
                           : "text-neutral-300 hover:text-white"
                       }`}
                     >

@@ -81,24 +81,22 @@ export const App: React.FC = () => {
   const [isAddPhotosModalOpen, setIsAddPhotosModalOpen] = useState(false);
   const [selectedPhotoIdsForAlbum, setSelectedPhotoIdsForAlbum] = useState<Set<string | number>>(new Set());
 
-  // Auto-Sync Background State & Engine
-  const [autoSync, setAutoSync] = useState<boolean>(() => {
-    return localStorage.getItem("cloud_photos_auto_sync") === "true";
-  });
-  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
-  const [autoSyncStatusText, setAutoSyncStatusText] = useState("");
+  // Manual Sync Engine (Chế độ sao lưu thủ công an toàn)
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusText, setSyncStatusText] = useState("");
   const isSyncingRef = useRef(false);
 
-  const executeAutoSync = async (notify = true, options?: { force?: boolean }) => {
-    if (isSyncingRef.current) return;
+  const executeManualSync = async (force = true) => {
+    if (isSyncingRef.current) {
+      showToast("Tiến trình sao lưu đang thực hiện...");
+      return;
+    }
     if (!config.isLoggedIn && !config.sessionString) {
-      if (notify) showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
+      showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
       return;
     }
     isSyncingRef.current = true;
-    if (notify) {
-      showToast("Đang quét thư viện ảnh...");
-    }
+    showToast("Đang quét thư viện ảnh iPhone...");
 
     // Watchdog an toàn: tự động reset khi có tiến trình mới, chỉ giải phóng nếu mạng bị treo cứng quá 45 giây
     let watchdogTimer: any = null;
@@ -106,8 +104,8 @@ export const App: React.FC = () => {
       if (watchdogTimer) clearTimeout(watchdogTimer);
       watchdogTimer = setTimeout(() => {
         isSyncingRef.current = false;
-        setIsAutoSyncing(false);
-        setAutoSyncStatusText("");
+        setIsSyncing(false);
+        setSyncStatusText("");
       }, 45000);
     };
     resetWatchdog();
@@ -117,46 +115,35 @@ export const App: React.FC = () => {
         config,
         (current, total, file) => {
           resetWatchdog();
-          setIsAutoSyncing(true);
-          setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
+          setIsSyncing(true);
+          setSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
         },
         photos, // Đối soát với danh sách ảnh đang có trên Telegram
-        options
+        { force }
       );
       if (res.syncedCount > 0) {
         showToast(res.message);
         if (res.newUploadedPhotos && res.newUploadedPhotos.length > 0) {
           setPhotos((prev) => {
-            const existingIds = new Set(prev.map((p) => p.messageId));
-            const fresh = res.newUploadedPhotos!.filter((p) => !existingIds.has(p.messageId));
-            return [...fresh, ...prev];
+            const map = new Map<number, PhotoItem>();
+            prev.forEach((p) => map.set(p.messageId, p));
+            res.newUploadedPhotos!.forEach((p) => map.set(p.messageId, p));
+            const merged = Array.from(map.values());
+            merged.sort((a, b) => b.date.getTime() - a.date.getTime());
+            return merged;
           });
-        } else {
-          loadPhotos(true);
         }
-      } else if (notify) {
+      } else {
         showToast(res.message);
       }
     } catch (e: any) {
-      console.error("Auto sync trigger error:", e);
-      if (notify) showToast("Lỗi đồng bộ tự động: " + (e.message || ""));
+      console.error("Manual sync error:", e);
+      showToast("Lỗi sao lưu: " + (e.message || ""));
     } finally {
       if (watchdogTimer) clearTimeout(watchdogTimer);
       isSyncingRef.current = false;
-      setIsAutoSyncing(false);
-      setAutoSyncStatusText("");
-    }
-  };
-
-  const handleAutoSyncChange = (enabled: boolean) => {
-    setAutoSync(enabled);
-    localStorage.setItem("cloud_photos_auto_sync", String(enabled));
-    if (enabled) {
-      showToast("Đã bật tự động sao lưu ảnh! 🔄");
-      // Khi người dùng chủ động bật công tắc, ép buộc quét ngay với force: true
-      executeAutoSync(true, { force: true });
-    } else {
-      showToast("Đã tắt tự động sao lưu");
+      setIsSyncing(false);
+      setSyncStatusText("");
     }
   };
 
@@ -338,30 +325,33 @@ export const App: React.FC = () => {
   }, []);
 
   const loadPhotos = async (isBackground = false) => {
+    // Chỉ hiển thị loading nếu kho ảnh đang hoàn toàn rỗng và không phải chạy ngầm
     if (!isBackground && photos.length === 0) {
       setLoading(true);
     }
     setErrorMessage("");
     try {
-      const data = await fetchChannelPhotos(config, 80);
+      const data = await fetchChannelPhotos(config, 100);
       if (data && data.length > 0) {
-        setPhotos(data);
-      } else {
-        // Đảm bảo không làm trống màn hình nếu trong cache IndexedDB có ảnh
+        setPhotos((prev) => {
+          // Smart merge: Đảm bảo không bao giờ làm mất ảnh trong kho đang hiển thị
+          const map = new Map<number, PhotoItem>();
+          prev.forEach((p) => map.set(p.messageId, p));
+          data.forEach((p) => map.set(p.messageId, p));
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => b.date.getTime() - a.date.getTime());
+          return merged;
+        });
+      }
+    } catch (e: any) {
+      console.warn("Lỗi kiểm tra ảnh Telegram:", e);
+      if (photos.length === 0) {
         const cached = await getCachedPhotosFromDB();
         if (cached && cached.length > 0) {
           setPhotos(cached);
-        }
-      }
-    } catch (e: any) {
-      console.error(e);
-      const cached = await getCachedPhotosFromDB();
-      if (cached && cached.length > 0) {
-        setPhotos(cached);
-      } else if (e.message && e.message.includes("CHUA_DANG_NHAP")) {
-        setErrorMessage("Chưa đăng nhập Telegram cá nhân. Vui lòng bấm Cài đặt và nhập SĐT.");
-      } else {
-        if (photos.length === 0) {
+        } else if (e.message && e.message.includes("CHUA_DANG_NHAP")) {
+          setErrorMessage("Chưa đăng nhập Telegram cá nhân. Vui lòng bấm Cài đặt và nhập SĐT.");
+        } else {
           setErrorMessage(e.message || "Lỗi tải ảnh từ Telegram");
         }
       }
@@ -374,29 +364,18 @@ export const App: React.FC = () => {
     if (config.isLoggedIn || config.sessionString) {
       loadPhotos(true);
     }
-  }, [config.apiId, config.apiHash, config.sessionString, config.isLoggedIn]);
-
-  const initialSyncDoneRef = useRef(false);
-
-  // Tự động sao lưu ảnh Camera Roll lên Telegram khi vừa mở app (chỉ chạy 1 lần khi app mount)
-  useEffect(() => {
-    if (!initialSyncDoneRef.current && autoSync && (config.isLoggedIn || config.sessionString)) {
-      initialSyncDoneRef.current = true;
-      executeAutoSync(false);
-    }
   }, [config.sessionString, config.isLoggedIn]);
 
-  // Lắng nghe khi app mở lại từ nền (App Resume) để tự động quét sao lưu ảnh mới chụp (có debounce 2.5s)
+  // Lắng nghe khi app mở lại từ nền (App Resume) để làm mới ảnh nhẹ nhàng nếu có mạng
   useEffect(() => {
     let listenerHandle: any = null;
     let resumeTimeout: any = null;
     CapApp.addListener("appStateChange", ({ isActive }) => {
-      if (isActive && autoSync && (config.isLoggedIn || config.sessionString)) {
+      if (isActive && (config.isLoggedIn || config.sessionString)) {
         if (resumeTimeout) clearTimeout(resumeTimeout);
         resumeTimeout = setTimeout(() => {
           loadPhotos(true);
-          executeAutoSync(false);
-        }, 2500);
+        }, 2000);
       }
     }).then((h) => {
       listenerHandle = h;
@@ -408,7 +387,7 @@ export const App: React.FC = () => {
       }
       if (resumeTimeout) clearTimeout(resumeTimeout);
     };
-  }, [autoSync, config.sessionString, config.isLoggedIn]);
+  }, [config.sessionString, config.isLoggedIn]);
 
   // Phân loại các bài viết cũ thành từng Album
   const postAlbums: PostAlbum[] = useMemo(() => {
@@ -478,7 +457,26 @@ export const App: React.FC = () => {
       );
     }
 
-    if (activeFilter === "Yêu thích") {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const sevenDaysAgo = todayStart - 6 * 86400000;
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    if (activeFilter === "Hôm nay") {
+      list = list.filter((p) => p.date && p.date.getTime() >= todayStart);
+    } else if (activeFilter === "7 ngày qua") {
+      list = list.filter((p) => p.date && p.date.getTime() >= sevenDaysAgo);
+    } else if (activeFilter === "Tháng này") {
+      list = list.filter(
+        (p) =>
+          p.date &&
+          p.date.getMonth() === thisMonth &&
+          p.date.getFullYear() === thisYear
+      );
+    } else if (activeFilter === "Năm nay") {
+      list = list.filter((p) => p.date && p.date.getFullYear() === thisYear);
+    } else if (activeFilter === "Yêu thích") {
       list = list.filter(
         (p) =>
           favorites.has(String(p.id)) || favorites.has(String(p.messageId))
@@ -850,26 +848,26 @@ export const App: React.FC = () => {
         {/* TAB 1: THƯ VIỆN (LIBRARY) */}
         {currentTab === "library" && (
           <>
-            {/* Banner tiến trình tự động sao lưu ảnh nền */}
-            {isAutoSyncing && autoSyncStatusText && (
-              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-500" />
-                <span className="truncate">{autoSyncStatusText}</span>
+            {/* Banner tiến trình sao lưu ảnh thủ công */}
+            {isSyncing && syncStatusText && (
+              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 animate-in fade-in duration-200 shadow-sm">
+                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-400" />
+                <span className="truncate">{syncStatusText}</span>
               </div>
             )}
 
             {/* Chip hiển thị bộ lọc đang kích hoạt kèm nút xóa lọc nhanh */}
             {activeFilter !== "Tất cả" && (
-              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold bg-blue-500/15 border border-blue-500/30 text-blue-400 shadow-sm">
+              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs sm:text-sm font-semibold bg-blue-500/15 border border-blue-500/30 text-blue-400 shadow-sm animate-in fade-in duration-200">
                 <span>
-                  Đang lọc: <strong>{activeFilter === "Album" ? "Bộ sưu tập (Carousels)" : activeFilter}</strong>
+                  Đang lọc: <strong>{activeFilter}</strong> ({filteredPhotos.length} ảnh)
                 </span>
                 <button
                   type="button"
                   onClick={() => setActiveFilter("Tất cả")}
                   className="font-bold underline text-xs text-blue-300 hover:text-white active:scale-95 transition-transform"
                 >
-                  Xem tất cả ảnh Thư viện ✕
+                  Xem tất cả ảnh ✕
                 </button>
               </div>
             )}
@@ -1737,7 +1735,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Settings Modal (Cấu hình thu gọn Drilldown, Theme, Tác giả Diễn Nguyễn, Auto-sync) */}
+      {/* Settings Modal (Thiết kế to rõ, trực quan, sang trọng phong cách iOS 18) */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -1747,11 +1745,9 @@ export const App: React.FC = () => {
         theme={theme}
         onThemeChange={handleThemeChange}
         isDarkMode={isDarkMode}
-        autoSync={autoSync}
-        onAutoSyncChange={handleAutoSyncChange}
         onTriggerSyncNow={(force) => {
           setIsSettingsOpen(false);
-          executeAutoSync(true, { force: force ?? true });
+          executeManualSync(force ?? true);
         }}
       />
     </div>

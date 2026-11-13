@@ -4,6 +4,43 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 16)] - 2026-11-13
+- **Commit SHA**: `a0640d3`
+- **Mục tiêu**:
+  1. Chuyển đổi hoàn toàn sang Chế độ Sao lưu thủ công (Manual Backup Only):
+     - Loại bỏ toàn bộ tiến trình quét và tải ngầm tự động (không chạy khi mở app, không chạy khi resume từ nền, không tiêu tốn pin iPhone).
+     - Quản lý sao lưu bằng nút bấm thủ công chủ động: "Bắt đầu quét & sao lưu ngay" và "Làm mới lịch sử & quét lại toàn bộ ảnh".
+  2. Nhận diện ngày chụp ảnh gốc & Lọc theo từng nấc thời gian:
+     - Bảo lưu chính xác `creationDate` từ PhotoKit iPhone vào file khi tạo và nhúng tag ngày tháng `📅 DD/MM/YYYY [YYYY-MM-DD]` vào caption Telegram.
+     - Hàm `fetchChannelPhotos` tự động trích xuất ngày chụp ảnh gốc từ caption thay vì lấy thời điểm gửi tin nhắn `msg.date`.
+     - Bổ sung menu lọc thời gian đa tầng trong Header: "Hôm nay", "7 ngày gần đây", "Tháng này", "Năm nay", "Mục yêu thích", "Bài viết nhiều ảnh".
+     - Gom nhóm ảnh (`groupedPhotos`) theo ngày chụp thực tế của ảnh.
+  3. Khắc phục triệt để lỗi ảnh bị mất rồi hiện lại & Tối ưu Bộ nhớ đệm (Cache-First):
+     - Giao diện luôn ưu tiên đọc tức thì (< 50ms) từ IndexedDB offline cache ngay khi mở ứng dụng.
+     - Cơ chế Smart Merge khi kết nối Telegram: Đối soát và gộp ảnh mới theo `messageId`, tuyệt đối KHÔNG BAO GIỜ làm trắng màn hình hoặc làm mất ảnh đang hiển thị.
+  4. Tái thiết kế toàn diện Giao diện Cài đặt (Settings UI Redesign):
+     - Loại bỏ các khối accordion thu gọn rườm rà gây rối mắt.
+     - Thiết kế lại thành 5 thẻ lớn (Large Cards) to rõ, trực quan, sang trọng chuẩn Apple iOS 18 / VisionOS:
+       + Thẻ Hero Sao lưu thủ công nổi bật (Emerald theme)
+       + Thẻ Quản lý dung lượng (Giải phóng máy + Bộ nhớ đệm Offline Cache)
+       + Thẻ Tài khoản & Kênh Telegram
+       + Thẻ Chế độ giao diện (Tối / Sáng / Hệ thống)
+       + Thẻ Tác giả & Phiên bản Build 16
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Viết lại toàn bộ giao diện Cài đặt dạng Card to rõ, trực quan, loại bỏ accordion.
+  - `ios-photo-app/src/components/Header.tsx`: Bổ sung menu lọc thời gian đa tầng (Hôm nay, 7 ngày, Tháng này, Năm nay).
+  - `ios-photo-app/src/App.tsx`: Chuyển sang sao lưu thủ công `executeManualSync`, tích hợp lọc thời gian, Smart Merge chống mất ảnh.
+  - `ios-photo-app/src/services/uploadService.ts`: Nhúng tag ngày gốc `[YYYY-MM-DD]` vào caption.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bảo lưu `creationDate` qua `base64ToFile`.
+  - `ios-photo-app/src/services/telegramClient.ts`: Trích xuất ngày gốc từ caption khi đọc tin nhắn Telegram.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `16`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 15)] - 2026-11-13
 - **Commit SHA**: `bc93b16`
 - **Mục tiêu**:

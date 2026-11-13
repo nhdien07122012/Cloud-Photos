@@ -192,8 +192,8 @@ export async function presentLimitedLibraryPicker(): Promise<boolean> {
   }
 }
 
-// Chuyển Base64 sang File object để upload lên Telegram
-function base64ToFile(base64: string, filename: string): File {
+// Chuyển Base64 sang File object để upload lên Telegram (giữ nguyên timestamp ngày chụp ảnh gốc)
+function base64ToFile(base64: string, filename: string, timestamp?: number): File {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) {
@@ -201,7 +201,10 @@ function base64ToFile(base64: string, filename: string): File {
   }
   const byteArray = new Uint8Array(byteNumbers);
   const blob = new Blob([byteArray], { type: "image/jpeg" });
-  return new File([blob], filename, { type: "image/jpeg" });
+  return new File([blob], filename, {
+    type: "image/jpeg",
+    lastModified: timestamp && timestamp > 0 ? timestamp : Date.now(),
+  });
 }
 
 export interface AutoSyncResult {
@@ -399,7 +402,8 @@ export async function runAutoSync(
           if (dataRes.base64) {
             const file = base64ToFile(
               dataRes.base64,
-              dataRes.filename || item.filename || `photo_${Date.now()}_${i}.jpg`
+              dataRes.filename || item.filename || `photo_${Date.now()}_${i}.jpg`,
+              item.timestamp
             );
             filesToUpload.push(file);
             successfulIds.push(item.id);

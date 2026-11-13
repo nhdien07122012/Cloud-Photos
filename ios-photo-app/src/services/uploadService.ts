@@ -146,9 +146,11 @@ export async function uploadPhotosToTelegram(
       // 1. Tạo thumbnail nhanh cho hiển thị cục bộ
       const thumbBuffer = await createThumbnail(file);
 
-      // 2. Lấy thời gian chụp/chỉnh sửa thực tế của file ảnh
-      const fileDate = file.lastModified ? new Date(file.lastModified) : new Date();
-      const captionText = `📷 ${file.name}\n📅 ${fileDate.toLocaleDateString("vi-VN")}`;
+      // 2. Lấy thời gian chụp/chỉnh sửa thực tế của file ảnh (bảo lưu ngày tháng gốc)
+      const fileDate = file.lastModified && file.lastModified > 0 ? new Date(file.lastModified) : new Date();
+      const dateStr = fileDate.toLocaleDateString("vi-VN");
+      const isoDate = fileDate.toISOString().split("T")[0]; // YYYY-MM-DD
+      const captionText = `📷 ${file.name}\n📅 ${dateStr} [${isoDate}]`;
 
       // 3. Upload file lên Kênh Telegram qua MTProto
       // Đọc arrayBuffer và bọc vào CustomFile có Buffer hợp lệ của GramJS

@@ -338,12 +338,31 @@ export async function fetchChannelPhotos(
         // Tải thumbnail sắc nét (thumb: 2 ~800px) cho Retina màn hình iPhone
         const buffer = await client.downloadMedia(msg.media, { thumb: 2 });
         if (buffer) {
+          // Trích xuất ngày chụp ảnh gốc từ caption nếu có (tag [YYYY-MM-DD] hoặc 📅 DD/MM/YYYY)
+          let photoTimestamp = msg.date * 1000;
+          if (msg.message) {
+            const isoMatch = msg.message.match(/\[(\d{4}-\d{2}-\d{2})\]/);
+            if (isoMatch && isoMatch[1]) {
+              const parsed = new Date(isoMatch[1]).getTime();
+              if (!isNaN(parsed) && parsed > 0) photoTimestamp = parsed;
+            } else {
+              const vnMatch = msg.message.match(/📅\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+              if (vnMatch) {
+                const d = parseInt(vnMatch[1], 10);
+                const m = parseInt(vnMatch[2], 10) - 1;
+                const y = parseInt(vnMatch[3], 10);
+                const parsed = new Date(y, m, d).getTime();
+                if (!isNaN(parsed) && parsed > 0) photoTimestamp = parsed;
+              }
+            }
+          }
+
           await savePhotoToCache({
             messageId: msg.id,
             id: `tg-${msg.id}`,
             thumbnailData: buffer,
             caption: msg.message || "",
-            timestamp: msg.date * 1000,
+            timestamp: photoTimestamp,
             isCarousel: msg.groupedId != null,
           });
           cachedIds.add(msg.id);
