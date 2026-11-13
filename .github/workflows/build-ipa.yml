@@ -35,6 +35,18 @@ jobs:
         run: |
           cd ios-photo-app
           npx cap sync ios
+          node -e '
+            const fs = require("fs");
+            const file = "ios/App/App/capacitor.config.json";
+            if (fs.existsSync(file)) {
+              const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+              cfg.packageClassList = cfg.packageClassList || [];
+              if (!cfg.packageClassList.includes("PhotoSync")) cfg.packageClassList.push("PhotoSync");
+              if (!cfg.packageClassList.includes("PhotoSyncPlugin")) cfg.packageClassList.push("PhotoSyncPlugin");
+              fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+              console.log("Injected PhotoSync into packageClassList:", cfg.packageClassList);
+            }
+          '
 
       - name: Build iOS App with Xcode
         run: |

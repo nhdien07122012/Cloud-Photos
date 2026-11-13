@@ -27,7 +27,13 @@ import {
   logoutTelegram,
 } from "../services/telegramClient";
 import { getCacheStats, clearPhotoCache } from "../services/photoStorage";
-import { openNativeSettings, presentLimitedLibraryPicker } from "../services/autoSyncService";
+import {
+  openNativeSettings,
+  presentLimitedLibraryPicker,
+  getFreeableDevicePhotos,
+  freeUpDeviceStorage,
+  getSyncedDeviceIds,
+} from "../services/autoSyncService";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -76,13 +82,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     sizeMB: "0",
   });
 
+  // Giải phóng dung lượng iPhone (Free Up Space)
+  const [freeableCount, setFreeableCount] = useState<number>(0);
+  const [syncedTotalCount, setSyncedTotalCount] = useState<number>(0);
+  const [isScanningFreeable, setIsScanningFreeable] = useState(false);
+  const [isFreeingUp, setIsFreeingUp] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+
+  const checkFreeableSpace = async () => {
+    setIsScanningFreeable(true);
+    try {
+      const synced = getSyncedDeviceIds();
+      setSyncedTotalCount(synced.size);
+      const freeable = await getFreeableDevicePhotos();
+      setFreeableCount(freeable.length);
+    } catch {
+      // ignore
+    } finally {
+      setIsScanningFreeable(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setFormData(config);
       setPhone(config.phoneNumber || "");
       getCacheStats().then(setCacheStats);
+      checkFreeableSpace();
     }
   }, [isOpen, config]);
+
+  const handleFreeUpStorage = async () => {
+    if (freeableCount === 0) return;
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn xóa ${freeableCount} ảnh đã sao lưu khỏi Thư viện ảnh iPhone để giải phóng dung lượng?\n\n(Ảnh vẫn được lưu an toàn 100% trên Telegram. iPhone sẽ chuyển ảnh vào mục "Đã xóa gần đây")`
+    );
+    if (!confirmed) return;
+
+    setIsFreeingUp(true);
+    setCleanupMessage("Đang yêu cầu iOS xóa ảnh khỏi thiết bị...");
+    try {
+      const res = await freeUpDeviceStorage();
+      setCleanupMessage(res.message);
+      await checkFreeableSpace();
+    } catch (err: any) {
+      setCleanupMessage("Lỗi: " + (err.message || String(err)));
+    } finally {
+      setIsFreeingUp(false);
+    }
+  };
 
   const toggleSection = (sectionName: string) => {
     setActiveSection((prev) => (prev === sectionName ? null : sectionName));
@@ -378,7 +426,136 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* MỤC 2: TÀI KHOẢN & KÊNH TELEGRAM MTPROTO */}
+          {/* MỤC 2: GIẢI PHÓNG DUNG LƯỢNG IPHONE (FREE UP SPACE) */}
+          <div
+            className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+              isDarkMode
+                ? "bg-neutral-900/60 border-neutral-800"
+                : "bg-white border-neutral-200 shadow-sm"
+            }`}
+          >
+            <div
+              onClick={() => toggleSection("cleanup")}
+              className="p-4 flex items-center justify-between cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-purple-500/15 text-purple-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold">Giải phóng dung lượng iPhone</h4>
+                    {freeableCount > 0 && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {freeableCount} ảnh
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={`text-xs mt-0.5 ${
+                      isDarkMode ? "text-neutral-400" : "text-neutral-500"
+                    }`}
+                  >
+                    Xóa ảnh gốc trên máy đã được sao lưu an toàn lên Telegram
+                  </p>
+                </div>
+              </div>
+
+              {activeSection === "cleanup" ? (
+                <ChevronDown className="w-5 h-5 text-neutral-400" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-neutral-400" />
+              )}
+            </div>
+
+            {/* Chi tiết mục Giải phóng dung lượng khi bấm vào */}
+            {activeSection === "cleanup" && (
+              <div
+                className={`p-4 border-t space-y-3.5 animate-in fade-in duration-200 ${
+                  isDarkMode ? "border-neutral-800 bg-neutral-950/40" : "border-neutral-100 bg-neutral-50/60"
+                }`}
+              >
+                <div
+                  className={`p-3 rounded-xl text-xs leading-relaxed ${
+                    isDarkMode
+                      ? "bg-neutral-800/60 text-neutral-300 border border-neutral-800"
+                      : "bg-white text-neutral-700 border border-neutral-200"
+                  }`}
+                >
+                  <p>
+                    🧹 <strong>Tương tự Google Photos:</strong> Tính năng này kiểm tra các ảnh trong máy của bạn đã được tải lên Kênh Telegram thành công, sau đó kích hoạt xác nhận của iOS để xóa ảnh khỏi iPhone nhằm tiết kiệm bộ nhớ máy (ảnh sẽ nằm trong mục <em>Đã xóa gần đây</em> của iPhone trong 30 ngày).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      isDarkMode
+                        ? "bg-neutral-800/40 border-neutral-800"
+                        : "bg-white border-neutral-200"
+                    }`}
+                  >
+                    <span className="text-[11px] block text-neutral-500">Đã sao lưu lên Telegram:</span>
+                    <span className="font-semibold text-sm text-blue-400">{syncedTotalCount} ảnh</span>
+                  </div>
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      isDarkMode
+                        ? "bg-neutral-800/40 border-neutral-800"
+                        : "bg-white border-neutral-200"
+                    }`}
+                  >
+                    <span className="text-[11px] block text-neutral-500">Có thể dọn dẹp trên iPhone:</span>
+                    <span className="font-semibold text-sm text-purple-400">{freeableCount} ảnh</span>
+                  </div>
+                </div>
+
+                {cleanupMessage && (
+                  <div className="p-2.5 rounded-xl text-xs bg-purple-500/15 border border-purple-500/30 text-purple-300 font-medium">
+                    {cleanupMessage}
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleFreeUpStorage}
+                    disabled={isFreeingUp || freeableCount === 0}
+                    className={`flex-1 py-2.5 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-transform shadow-md ${
+                      freeableCount > 0
+                        ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
+                        : isDarkMode
+                        ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                        : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {isFreeingUp
+                      ? "Đang giải phóng dung lượng..."
+                      : freeableCount > 0
+                      ? `Xóa ${freeableCount} ảnh khỏi iPhone để giải phóng`
+                      : "Không có ảnh nào cần giải phóng"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={checkFreeableSpace}
+                    disabled={isScanningFreeable}
+                    className={`px-3 py-2.5 rounded-xl text-xs font-medium border flex items-center justify-center transition-colors ${
+                      isDarkMode
+                        ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300"
+                        : "bg-white hover:bg-neutral-100 border-neutral-200 text-neutral-700"
+                    }`}
+                    title="Quét lại bộ nhớ iPhone"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isScanningFreeable ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* MỤC 3: TÀI KHOẢN & KÊNH TELEGRAM MTPROTO */}
           <div
             className={`rounded-2xl border transition-all overflow-hidden ${
               isDarkMode
@@ -905,7 +1082,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       isDarkMode ? "text-neutral-400" : "text-neutral-500"
                     }`}
                   >
-                    CloudPhotos v1.3 • Build 8
+                    CloudPhotos v1.3 • Build 9
                   </p>
                 </div>
               </div>
@@ -957,7 +1134,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <span className="text-[11px] block text-neutral-500">Phiên bản:</span>
-                    <span className="font-semibold text-sm">v1.3 (Build 8)</span>
+                    <span className="font-semibold text-sm">v1.3 (Build 9)</span>
                   </div>
                   <div
                     className={`p-2.5 rounded-xl border ${
@@ -986,7 +1163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 8 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 9 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

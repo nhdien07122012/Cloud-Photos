@@ -19,14 +19,79 @@ export interface PermissionResult {
 
 export interface PhotoSyncPluginInterface {
   checkPermission(): Promise<PermissionResult>;
+  checkPermissions?(): Promise<PermissionResult>;
   requestPermission(): Promise<PermissionResult>;
+  requestPermissions?(): Promise<PermissionResult>;
   openSettings(): Promise<{ success: boolean }>;
   presentLimitedPicker(): Promise<{ success: boolean }>;
   getRecentPhotos(options?: { limit?: number }): Promise<{ photos: NativePhoto[]; status?: string }>;
   getPhotoData(options: { id: string }): Promise<{ base64: string; filename: string; size: number }>;
+  deletePhotos(options: { ids: string[] }): Promise<{ success: boolean; deletedCount: number }>;
 }
 
-export const PhotoSync = registerPlugin<PhotoSyncPluginInterface>("PhotoSync");
+const callNativeMethod = async (methodName: string, options: any = {}) => {
+  const cap = (window as any).Capacitor;
+  if (!cap) {
+    throw new Error("Capacitor bridge chưa được nạp trên thiết bị");
+  }
+
+  // 1. Kiểm tra trực tiếp trên window.Capacitor.Plugins
+  if (cap.Plugins?.PhotoSync?.[methodName]) {
+    return await cap.Plugins.PhotoSync[methodName](options);
+  }
+  if (cap.Plugins?.PhotoSyncPlugin?.[methodName]) {
+    return await cap.Plugins.PhotoSyncPlugin[methodName](options);
+  }
+
+  // 2. Gọi nativePromise trực tiếp
+  if (typeof cap.nativePromise === "function") {
+    try {
+      return await cap.nativePromise("PhotoSync", methodName, options);
+    } catch (e1: any) {
+      if (e1?.message && (e1.message.includes("not implemented") || e1.message.includes("does not exist"))) {
+        return await cap.nativePromise("PhotoSyncPlugin", methodName, options);
+      }
+      throw e1;
+    }
+  }
+
+  // 3. Fallback callback
+  if (typeof cap.nativeCallback === "function") {
+    return new Promise((resolve, reject) => {
+      cap.nativeCallback("PhotoSync", methodName, options, (res: any, err: any) => {
+        if (err) reject(err);
+        else resolve(res);
+      });
+    });
+  }
+
+  throw new Error(`Cổng giao tiếp native PhotoSync.${methodName} chưa sẵn sàng`);
+};
+
+export const PhotoSync = registerPlugin<PhotoSyncPluginInterface>("PhotoSync", {
+  ios: async () => ({
+    checkPermission: (opts?: any) => callNativeMethod("checkPermission", opts),
+    checkPermissions: (opts?: any) => callNativeMethod("checkPermission", opts),
+    requestPermission: (opts?: any) => callNativeMethod("requestPermission", opts),
+    requestPermissions: (opts?: any) => callNativeMethod("requestPermission", opts),
+    openSettings: (opts?: any) => callNativeMethod("openSettings", opts),
+    presentLimitedPicker: (opts?: any) => callNativeMethod("presentLimitedPicker", opts),
+    getRecentPhotos: (opts?: any) => callNativeMethod("getRecentPhotos", opts),
+    getPhotoData: (opts: any) => callNativeMethod("getPhotoData", opts),
+    deletePhotos: (opts: any) => callNativeMethod("deletePhotos", opts),
+  }),
+  web: async () => ({
+    checkPermission: async () => ({ status: "denied", granted: false, isFullAccess: false }),
+    checkPermissions: async () => ({ status: "denied", granted: false, isFullAccess: false }),
+    requestPermission: async () => ({ status: "denied", granted: false, isFullAccess: false }),
+    requestPermissions: async () => ({ status: "denied", granted: false, isFullAccess: false }),
+    openSettings: async () => ({ success: false }),
+    presentLimitedPicker: async () => ({ success: false }),
+    getRecentPhotos: async () => ({ photos: [], status: "denied" }),
+    getPhotoData: async () => { throw new Error("Chỉ hỗ trợ trên thiết bị iPhone (.ipa)"); },
+    deletePhotos: async () => ({ success: false, deletedCount: 0 }),
+  }),
+});
 
 const SYNCED_IDS_STORAGE_KEY = "cloud_photos_synced_device_ids";
 
@@ -221,6 +286,89 @@ export async function runAutoSync(
       success: false,
       syncedCount: 0,
       message: "Lỗi đồng bộ tự động: " + (err.message || String(err)),
+    };
+  }
+}
+
+/**
+ * Lấy danh sách ID ảnh đã sao lưu lên Telegram và hiện vẫn còn tồn tại trên iPhone
+ */
+export async function getFreeableDevicePhotos(): Promise<string[]> {
+  if (!Capacitor.isNativePlatform()) return [];
+  try {
+    const syncedIds = getSyncedDeviceIds();
+    if (syncedIds.size === 0) return [];
+
+    const res = await PhotoSync.getRecentPhotos({ limit: 100 });
+    const devicePhotos = res.photos || [];
+
+    const freeable = devicePhotos
+      .map((p) => p.id)
+      .filter((id) => syncedIds.has(id));
+
+    return freeable;
+  } catch (e) {
+    console.error("Lỗi kiểm tra ảnh có thể giải phóng:", e);
+    return [];
+  }
+}
+
+/**
+ * Xóa ảnh đã sao lưu khỏi Thư viện ảnh iPhone để giải phóng bộ nhớ (Free Up Space)
+ * Kích hoạt hộp thoại xác nhận gốc của iOS (PHAssetChangeRequest.deleteAssets)
+ */
+export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
+  success: boolean;
+  deletedCount: number;
+  message: string;
+}> {
+  if (!Capacitor.isNativePlatform()) {
+    return {
+      success: false,
+      deletedCount: 0,
+      message: "Chức năng giải phóng dung lượng iPhone chỉ hoạt động trên thiết bị iPhone (.ipa).",
+    };
+  }
+
+  try {
+    let targetIds = specificIds;
+    if (!targetIds || targetIds.length === 0) {
+      targetIds = await getFreeableDevicePhotos();
+    }
+
+    if (!targetIds || targetIds.length === 0) {
+      return {
+        success: true,
+        deletedCount: 0,
+        message: "Không tìm thấy ảnh đã sao lưu nào trên máy cần dọn dẹp.",
+      };
+    }
+
+    const res = await PhotoSync.deletePhotos({ ids: targetIds });
+    if (res.success && res.deletedCount > 0) {
+      // Dọn bớt ID đã xóa khỏi local set
+      const synced = getSyncedDeviceIds();
+      targetIds.forEach((id) => synced.delete(id));
+      saveSyncedDeviceIds(synced);
+
+      return {
+        success: true,
+        deletedCount: res.deletedCount,
+        message: `Đã giải phóng thành công ${res.deletedCount} ảnh khỏi iPhone! (Ảnh vẫn được lưu an toàn 100% trên Telegram)`,
+      };
+    } else {
+      return {
+        success: false,
+        deletedCount: 0,
+        message: "Chưa có ảnh nào được xóa khỏi iPhone.",
+      };
+    }
+  } catch (err: any) {
+    console.error("Lỗi khi giải phóng dung lượng:", err);
+    return {
+      success: false,
+      deletedCount: 0,
+      message: "Lỗi giải phóng dung lượng: " + (err.message || String(err)),
     };
   }
 }

@@ -46,32 +46,53 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 /**
  * Custom ViewController subclassing CAPBridgeViewController
- * Ensures PhotoSyncPlugin is actively registered when Capacitor bridge initializes
+ * Ensures PhotoSync is actively registered when Capacitor bridge initializes
  */
 @objc(ViewController)
 public class ViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
-        bridge?.registerPluginInstance(PhotoSyncPlugin())
+        registerCustomPlugins()
+    }
+
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        registerCustomPlugins()
+    }
+
+    private func registerCustomPlugins() {
+        let plugin = PhotoSync()
+        bridge?.registerPluginInstance(plugin)
     }
 }
 
 /**
- * PhotoSyncPlugin - Tự động đồng bộ và đọc ảnh từ Thư viện ảnh iPhone (Camera Roll)
- * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram với quyền ReadWrite đầy đủ
+ * PhotoSync - Tự động đồng bộ, đọc và dọn dẹp ảnh từ Thư viện iPhone (Camera Roll)
+ * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram và giải phóng dung lượng iPhone
  */
-@objc(PhotoSyncPlugin)
-public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
-    public let identifier = "PhotoSyncPlugin"
+@objc(PhotoSync)
+public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "PhotoSync"
     public let jsName = "PhotoSync"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "checkPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "presentLimitedPicker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getRecentPhotos", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getPhotoData", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getPhotoData", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "deletePhotos", returnType: CAPPluginReturnPromise)
     ]
+
+    @objc override public func checkPermissions(_ call: CAPPluginCall) {
+        checkPermission(call)
+    }
+
+    @objc override public func requestPermissions(_ call: CAPPluginCall) {
+        requestPermission(call)
+    }
 
     @objc func checkPermission(_ call: CAPPluginCall) {
         let status: PHAuthorizationStatus
@@ -261,5 +282,44 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
     }
+
+    @objc func deletePhotos(_ call: CAPPluginCall) {
+        guard let ids = call.getArray("ids", String.self), !ids.isEmpty else {
+            call.reject("Không có danh sách ID ảnh để xóa")
+            return
+        }
+
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+        guard assets.count > 0 else {
+            call.resolve([
+                "success": true,
+                "deletedCount": 0
+            ])
+            return
+        }
+
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.deleteAssets(assets)
+        }) { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    call.resolve([
+                        "success": true,
+                        "deletedCount": assets.count
+                    ])
+                } else {
+                    let errMsg = error?.localizedDescription ?? "Người dùng đã từ chối xóa ảnh hoặc có lỗi xảy ra"
+                    call.reject(errMsg)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Lớp tương thích ngược đảm bảo cả tên "PhotoSync" và "PhotoSyncPlugin" đều phân giải thành công
+ */
+@objc(PhotoSyncPlugin)
+public class PhotoSyncPlugin: PhotoSync {
 }
 

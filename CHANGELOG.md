@@ -4,6 +4,39 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 9)] - 2026-11-13
+- **Commit SHA**: `246e746`
+- **Mục tiêu**:
+  1. Fix triệt để lỗi `"PhotoSync" plugin is not implemented on ios` bằng giải pháp bảo vệ 3 tầng (Triple-layer Redundancy):
+     - Tầng JS: Triển khai fallback bridge trực tiếp trong `registerPlugin("PhotoSync", { ios: ... })` gọi thẳng `window.Capacitor.nativePromise` / `window.Capacitor.Plugins.PhotoSync`, ngăn chặn hoàn toàn việc `@capacitor/core` ném lỗi Unimplemented.
+     - Tầng Native Swift: Đăng ký cả 2 định danh `@objc(PhotoSync)` và `@objc(PhotoSyncPlugin)` trong cả `capacitorDidLoad()` và `viewDidLoad()`, đồng thời bổ sung các phương thức `checkPermissions` và `requestPermissions` chuẩn Capacitor.
+     - Tầng CI/CD: Tự động inject `"PhotoSync"` và `"PhotoSyncPlugin"` vào `packageClassList` trong `capacitor.config.json` ngay sau bước `npx cap sync ios`.
+  2. Thêm tính năng **"Giải phóng dung lượng iPhone" 🧹 (Free Up Space)** chuẩn phong cách Google Photos:
+     - Tự động đối soát các ảnh trong Thư viện iPhone đã được tải lên Telegram an toàn (dựa trên danh sách `syncedDeviceIds`).
+     - Hiển thị mục chuyên dụng trong Cài đặt với số lượng ảnh có thể dọn dẹp và nút bấm dọn dẹp ngay.
+     - Kích hoạt hộp thoại xác nhận gốc của iOS (`PHAssetChangeRequest.deleteAssets`) để người dùng cấp phép xóa ảnh gốc khỏi iPhone an toàn (ảnh được đưa vào mục *Đã xóa gần đây* của máy trong 30 ngày, bảo toàn 100% trên Telegram).
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`:
+    - Khởi tạo `@objc(PhotoSync)` và `@objc(PhotoSyncPlugin)` với đầy đủ phương thức `deletePhotos`, `checkPermission/s`, `requestPermission/s`.
+    - `ViewController`: Đăng ký plugin trong cả `capacitorDidLoad()` và `viewDidLoad()`.
+    - `deletePhotos`: Thực thi `PHAssetChangeRequest.deleteAssets` qua PhotoKit.
+  - `ios-photo-app/src/services/autoSyncService.ts`:
+    - Thêm fallback implementation cho `registerPlugin("PhotoSync", { ios: ... })`.
+    - Bổ sung các hàm trợ giúp: `getFreeableDevicePhotos()` và `freeUpDeviceStorage()`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`:
+    - Bổ sung Section **"Giải phóng dung lượng iPhone"** (hiển thị số ảnh đã sao lưu, số ảnh có thể dọn dẹp, nút quét lại và nút giải phóng).
+    - Cập nhật số hiệu bản dựng lên `CloudPhotos v1.3 • Build 9`.
+  - `.github/workflows/build-ipa.yml`:
+    - Inject `"PhotoSync"` và `"PhotoSyncPlugin"` vào `packageClassList` của `capacitor.config.json`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`:
+    - Tăng `CURRENT_PROJECT_VERSION` lên `9`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 8)] - 2026-11-13
 - **Commit SHA**: `53e3745`
 - **Mục tiêu**:
