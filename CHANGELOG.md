@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 12)] - 2026-11-13
-- **Commit SHA**: `7b9ca21`
+- **Commit SHA**: `021bdce`
 - **Mục tiêu**:
   1. Triển khai tính năng **iOS Live Activities & Dynamic Island** cho tiến trình sao lưu ảnh ngầm:
      - Hiển thị trực tiếp tiến trình sao lưu (số lượng ảnh, phần trăm hoàn thành %, tên file ảnh đang tải, thanh tiến trình gradient) trên **Màn hình khóa (Lock Screen Widget)** và **Dynamic Island** (Compact Leading/Trailing, Minimal, và Expanded) giống các app giao đồ ăn / thể thao hàng đầu.

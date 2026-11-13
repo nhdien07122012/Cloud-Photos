@@ -1,22 +1,14 @@
 import WidgetKit
 import SwiftUI
-#if canImport(ActivityKit)
 import ActivityKit
-#endif
 
 @main
 struct BackupWidgetBundle: WidgetBundle {
     var body: some Widget {
-        #if canImport(ActivityKit)
-        if #available(iOSApplicationExtension 16.1, *) {
-            BackupLiveActivity()
-        }
-        #endif
+        BackupLiveActivity()
     }
 }
 
-#if canImport(ActivityKit)
-@available(iOSApplicationExtension 16.1, *)
 struct BackupLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: BackupActivityAttributes.self) { context in
@@ -115,7 +107,6 @@ struct BackupLiveActivity: Widget {
     }
 }
 
-@available(iOSApplicationExtension 16.1, *)
 struct LockScreenBackupView: View {
     let context: ActivityViewContext<BackupActivityAttributes>
 
@@ -184,4 +175,3 @@ struct LockScreenBackupView: View {
         .activitySystemActionForegroundColor(Color.white)
     }
 }
-#endif

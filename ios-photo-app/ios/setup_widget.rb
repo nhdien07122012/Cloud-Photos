@@ -33,14 +33,15 @@ else
   # Group BackupWidget
   widget_group = project.main_group.find_subpath('BackupWidget', true)
   widget_group.set_source_tree('<group>')
+  widget_group.path = 'BackupWidget'
   
   # File references
-  widget_swift_file = 'BackupWidget/BackupWidget.swift'
-  widget_swift_ref = widget_group.find_file_by_path('BackupWidget.swift') || widget_group.new_file(widget_swift_file)
+  widget_swift_ref = widget_group.find_file_by_path('BackupWidget.swift') || widget_group.new_file('BackupWidget.swift')
+  widget_group.find_file_by_path('Info.plist') || widget_group.new_file('Info.plist')
   
   # Shared attributes
   app_group = project.main_group.find_subpath('App', true)
-  attrs_ref = app_group.find_file_by_path('BackupActivityAttributes.swift') || app_group.new_file('App/BackupActivityAttributes.swift')
+  attrs_ref = app_group.find_file_by_path('BackupActivityAttributes.swift') || app_group.new_file('BackupActivityAttributes.swift')
 
   # Add to widget target sources
   widget_target.source_build_phase.add_file_reference(widget_swift_ref)
@@ -52,14 +53,15 @@ else
   # Embed Foundation Extensions build phase
   embed_phase = main_target.copy_files_build_phases.find { |bp| bp.name == 'Embed Foundation Extensions' }
   unless embed_phase
-    embed_phase = project.new(Xcodeproj::Project::Object::PBXCopyFilesBuildPhase)
-    embed_phase.name = 'Embed Foundation Extensions'
-    embed_phase.symbol_dst_subfolder_spec = '13'
-    main_target.build_phases << embed_phase
+    embed_phase = main_target.new_copy_files_build_phase('Embed Foundation Extensions')
+    embed_phase.symbol_dst_subfolder_spec = :plug_ins
+    embed_phase.dst_path = ''
   end
 
-  build_file = embed_phase.add_file_reference(widget_target.product_reference)
-  build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
+  unless embed_phase.files_references.include?(widget_target.product_reference)
+    build_file = embed_phase.add_file_reference(widget_target.product_reference)
+    build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
+  end
 
   project.save
   puts "Successfully configured BackupWidget target in #{project_path}"
