@@ -1,0 +1,68 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build CloudPhotos IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: |
+          cd ios-photo-app
+          npm install
+
+      - name: Build Web Application
+        run: |
+          cd ios-photo-app
+          npm run build
+
+      - name: Sync with Capacitor iOS
+        run: |
+          cd ios-photo-app
+          npx cap sync ios
+
+      - name: Build iOS App with Xcode
+        run: |
+          cd ios-photo-app/ios/App
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj
+          xcodebuild clean build \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath derived_data \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package Payload into .ipa
+        run: |
+          cd ios-photo-app/ios/App
+          mkdir -p Payload
+          cp -r derived_data/Build/Products/Release-iphoneos/App.app Payload/App.app
+          cp App/Assets.xcassets/AppIcon.appiconset/*.png Payload/App.app/ || true
+          cp App/AppIcon*.png Payload/App.app/ || true
+          cp App/iTunesArtwork*.png Payload/App.app/ || true
+          zip -qr CloudPhotos.ipa Payload
+          echo "=== IPA File Created ==="
+          ls -lh CloudPhotos.ipa
+
+      - name: Upload IPA to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudPhotos.ipa
+          path: ios-photo-app/ios/App/CloudPhotos.ipa
+          if-no-files-found: error
