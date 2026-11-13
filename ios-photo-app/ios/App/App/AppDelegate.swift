@@ -332,6 +332,35 @@ public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
             }
         }
     }
+
+    // MARK: - Live Activity & Background Execution
+
+    @objc func startLiveActivity(_ call: CAPPluginCall) {
+        let total = call.getInt("total") ?? 0
+        let filename = call.getString("initialFileName") ?? ""
+        let success = LiveActivityManager.shared.startActivity(total: total, initialFileName: filename)
+        call.resolve(["success": success])
+    }
+
+    @objc func updateLiveActivity(_ call: CAPPluginCall) {
+        let current = call.getInt("current") ?? 0
+        let total = call.getInt("total") ?? 0
+        let filename = call.getString("currentFileName") ?? ""
+        let status = call.getString("statusText") ?? "Đang sao lưu..."
+        LiveActivityManager.shared.updateActivity(
+            current: current,
+            total: total,
+            currentFileName: filename,
+            statusText: status
+        )
+        call.resolve(["success": true])
+    }
+
+    @objc func endLiveActivity(_ call: CAPPluginCall) {
+        let finalMessage = call.getString("finalMessage") ?? "Đã sao lưu hoàn tất"
+        LiveActivityManager.shared.endActivity(finalMessage: finalMessage)
+        call.resolve(["success": true])
+    }
 }
 
 /**

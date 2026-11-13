@@ -4,6 +4,36 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 12)] - 2026-11-13
+- **Commit SHA**: `7b9ca21`
+- **Mục tiêu**:
+  1. Triển khai tính năng **iOS Live Activities & Dynamic Island** cho tiến trình sao lưu ảnh ngầm:
+     - Hiển thị trực tiếp tiến trình sao lưu (số lượng ảnh, phần trăm hoàn thành %, tên file ảnh đang tải, thanh tiến trình gradient) trên **Màn hình khóa (Lock Screen Widget)** và **Dynamic Island** (Compact Leading/Trailing, Minimal, và Expanded) giống các app giao đồ ăn / thể thao hàng đầu.
+     - Tích hợp `UIBackgroundTaskIdentifier` (`UIApplication.shared.beginBackgroundTask`) tự động duy trì quyền thực thi CPU khi người dùng khóa màn hình hoặc chuyển sang ứng dụng khác, đảm bảo các bức ảnh đang tải lên Telegram không bị iOS ngắt ngang.
+     - Cấu hình `Info.plist` với `NSSupportsLiveActivities = YES`, `NSSupportsLiveActivitiesFrequentUpdates = YES`, và `UIBackgroundModes` (`fetch`, `processing`).
+     - Tích hợp Widget Extension target (`BackupWidget`) với SwiftUI + WidgetKit + ActivityKit trong quy trình CI/CD.
+  2. Bổ sung giao diện **In-App Dynamic Island Capsule** nổi trực tiếp ở đầu ứng dụng khi sao lưu ngầm đang diễn ra, mang lại trải nghiệm mượt mà và trực quan xuyên suốt các tab.
+  3. Nâng cấp số hiệu bản dựng lên `CloudPhotos v1.3 • Build 12`.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/BackupActivityAttributes.swift`: Tạo cấu trúc `BackupActivityAttributes` và `ContentState` dùng chung cho App và Widget Extension.
+  - `ios-photo-app/ios/App/App/LiveActivityManager.swift`: Quản lý vòng đời Live Activity (`startActivity`, `updateActivity`, `endActivity`) kết hợp `beginBackgroundTask`.
+  - `ios-photo-app/ios/App/BackupWidget/BackupWidget.swift`: Thiết kế giao diện SwiftUI cho Lock Screen banner và Dynamic Island (Leading, Trailing, Bottom, Compact, Minimal).
+  - `ios-photo-app/ios/App/BackupWidget/Info.plist`: Cấu hình WidgetKit extension.
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Bổ sung native methods `startLiveActivity`, `updateLiveActivity`, `endLiveActivity` trong `PhotoSync`.
+  - `ios-photo-app/ios/App/App/Info.plist`: Cấp quyền `NSSupportsLiveActivities`, `NSSupportsLiveActivitiesFrequentUpdates` và `UIBackgroundModes`.
+  - `ios-photo-app/ios/setup_widget.rb`: Tự động cấu hình Widget Extension target và Embed Foundation Extensions trong `App.xcodeproj`.
+  - `.github/workflows/build-ipa.yml`: Tích hợp script cấu hình Widget Extension vào pipeline build Xcode.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Tích hợp gọi `PhotoSync.startLiveActivity`, `updateLiveActivity` và `endLiveActivity` trong luồng sao lưu.
+  - `ios-photo-app/src/App.tsx`: Hiển thị in-app Dynamic Island capsule pill sang trọng khi đang sao lưu ngầm.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp phiên bản lên `v1.3 (Build 12)` và ghi chú hỗ trợ Live Activity.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `12`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 11)] - 2026-11-13
 - **Commit SHA**: `b6fed74`
 - **Mục tiêu**:

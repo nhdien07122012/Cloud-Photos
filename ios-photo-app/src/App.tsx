@@ -790,6 +790,31 @@ export const App: React.FC = () => {
           </div>
         )}
 
+        {/* Dynamic Island Capsule hiển thị tiến trình Live Activity chuẩn Apple */}
+        {isAutoSyncing && (
+          <div className="fixed top-2.5 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm pointer-events-auto animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="bg-black/95 backdrop-blur-2xl border border-white/20 text-white shadow-2xl rounded-full px-4 py-2.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-cyan-500/20 flex items-center justify-center shrink-0">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-white flex items-center gap-1.5 leading-none">
+                    <span>CloudPhotos Sao lưu ngầm</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  </div>
+                  <div className="text-[10px] text-neutral-300 truncate mt-1 leading-none font-medium">
+                    {autoSyncStatusText || "Đang đồng bộ ảnh mới lên Telegram..."}
+                  </div>
+                </div>
+              </div>
+              <div className="shrink-0 px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-[10px] font-extrabold text-cyan-300 border border-cyan-400/40">
+                LIVE
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Thông báo lỗi nếu có */}
         {errorMessage && (
           <div

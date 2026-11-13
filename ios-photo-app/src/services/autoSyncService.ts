@@ -28,6 +28,9 @@ export interface PhotoSyncPluginInterface {
   getRecentPhotos(options?: { limit?: number }): Promise<{ photos: NativePhoto[]; status?: string }>;
   getPhotoData(options: { id: string }): Promise<{ base64: string; filename: string; size: number }>;
   deletePhotos(options: { ids: string[] }): Promise<{ success: boolean; deletedCount: number }>;
+  startLiveActivity(options: { total: number; initialFileName?: string }): Promise<{ success: boolean }>;
+  updateLiveActivity(options: { current: number; total: number; currentFileName?: string; statusText?: string }): Promise<{ success: boolean }>;
+  endLiveActivity(options?: { finalMessage?: string }): Promise<{ success: boolean }>;
 }
 
 const callNativeMethod = async (methodName: string, options: any = {}) => {
@@ -80,6 +83,9 @@ export const PhotoSync = registerPlugin<PhotoSyncPluginInterface>("PhotoSync", {
     getRecentPhotos: (opts?: any) => callNativeMethod("getRecentPhotos", opts),
     getPhotoData: (opts: any) => callNativeMethod("getPhotoData", opts),
     deletePhotos: (opts: any) => callNativeMethod("deletePhotos", opts),
+    startLiveActivity: (opts: any) => callNativeMethod("startLiveActivity", opts),
+    updateLiveActivity: (opts: any) => callNativeMethod("updateLiveActivity", opts),
+    endLiveActivity: (opts?: any) => callNativeMethod("endLiveActivity", opts),
   }),
   web: async () => ({
     checkPermission: async () => ({ status: "denied", granted: false, isFullAccess: false }),
@@ -91,6 +97,9 @@ export const PhotoSync = registerPlugin<PhotoSyncPluginInterface>("PhotoSync", {
     getRecentPhotos: async () => ({ photos: [], status: "denied" }),
     getPhotoData: async () => { throw new Error("Chỉ hỗ trợ trên thiết bị iPhone (.ipa)"); },
     deletePhotos: async () => ({ success: false, deletedCount: 0 }),
+    startLiveActivity: async () => ({ success: true }),
+    updateLiveActivity: async () => ({ success: true }),
+    endLiveActivity: async () => ({ success: true }),
   }),
 });
 
@@ -280,6 +289,16 @@ export async function runAutoSync(
     const batch = unsynced.slice(0, 12);
     const remaining = unsynced.length - batch.length;
 
+    // Khởi động iOS Live Activity & Dynamic Island để hiển thị tiến trình trên Màn hình khóa
+    try {
+      await PhotoSync.startLiveActivity({
+        total: batch.length,
+        initialFileName: batch[0]?.filename || "Đang quét ảnh...",
+      });
+    } catch (e) {
+      console.warn("Không thể kích hoạt Live Activity:", e);
+    }
+
     // ĐÁNH DẤU TRƯỚC các ID đang xử lý vào syncedIds để ngăn chặn các trigger khác đọc trùng
     batch.forEach((item) => syncedIds.add(item.id));
     saveSyncedDeviceIds(syncedIds);
@@ -292,6 +311,15 @@ export async function runAutoSync(
       if (onProgress) {
         onProgress(i + 1, batch.length, `Đang chuẩn bị ảnh ${i + 1}/${batch.length}...`);
       }
+      try {
+        PhotoSync.updateLiveActivity({
+          current: i + 1,
+          total: batch.length,
+          currentFileName: item.filename || `photo_${i + 1}.jpg`,
+          statusText: `Đang nén & chuẩn bị (${i + 1}/${batch.length})...`,
+        }).catch(() => {});
+      } catch {}
+
       try {
         const dataRes = await PhotoSync.getPhotoData({ id: item.id });
         if (dataRes.base64) {
@@ -311,6 +339,7 @@ export async function runAutoSync(
 
     if (filesToUpload.length === 0) {
       saveSyncedDeviceIds(syncedIds);
+      PhotoSync.endLiveActivity({ finalMessage: "Không đọc được tệp ảnh" }).catch(() => {});
       return {
         success: true,
         syncedCount: 0,
@@ -326,16 +355,28 @@ export async function runAutoSync(
         if (onProgress) {
           onProgress(prog.current, prog.total, prog.currentFileName);
         }
+        PhotoSync.updateLiveActivity({
+          current: prog.current,
+          total: prog.total,
+          currentFileName: prog.currentFileName,
+          statusText: `Đang tải lên Telegram (${prog.current}/${prog.total})...`,
+        }).catch(() => {});
       });
     } catch (uploadErr) {
       // Nếu upload toàn bộ thất bại, hoàn tác các ID để thử lại lần sau
       successfulIds.forEach((id) => syncedIds.delete(id));
       saveSyncedDeviceIds(syncedIds);
+      PhotoSync.endLiveActivity({ finalMessage: "Lỗi tải ảnh lên Telegram" }).catch(() => {});
       throw uploadErr;
     }
 
     // Đảm bảo lưu chắc chắn danh sách ID đã hoàn thành
     saveSyncedDeviceIds(syncedIds);
+
+    // Báo hoàn tất cho Live Activity trên Màn hình khóa & Dynamic Island
+    PhotoSync.endLiveActivity({
+      finalMessage: `Đã sao lưu ${uploadedPhotos.length} ảnh lên Telegram`,
+    }).catch(() => {});
 
     const extraMsg = remaining > 0 ? ` (Còn ${remaining} ảnh sẽ tiếp tục đồng bộ)` : "";
     return {
@@ -347,6 +388,7 @@ export async function runAutoSync(
     };
   } catch (err: any) {
     console.error("Auto-sync error:", err);
+    PhotoSync.endLiveActivity({ finalMessage: "Lỗi đồng bộ: " + (err.message || "") }).catch(() => {});
     return {
       success: false,
       syncedCount: 0,
