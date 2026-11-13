@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import type { PhotoItem, DateGroup, TelegramConfig, PostAlbum, ThemeMode } from "./types";
+import type { PhotoItem, DateGroup, TelegramConfig, PostAlbum, ThemeMode, UserAlbum } from "./types";
 import {
   getStoredConfig,
   saveStoredConfig,
@@ -11,6 +11,14 @@ import {
   removePhotoFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
+import {
+  getUserAlbums,
+  createNewAlbum,
+  addPhotosToAlbum,
+  removePhotoFromAlbum,
+  deleteAlbum,
+  getPhotosInAlbum,
+} from "./services/albumStorage";
 import { Header } from "./components/Header";
 import { PhotoGrid } from "./components/PhotoGrid";
 import { PhotoViewer } from "./components/PhotoViewer";
@@ -33,6 +41,11 @@ import {
   Camera,
   Image as ImageIcon,
   CheckCircle2,
+  FolderPlus,
+  Plus,
+  Check,
+  Trash2,
+  ImagePlus,
 } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -47,6 +60,29 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAlbum, setSelectedAlbum] = useState<PostAlbum | null>(null);
+
+  // User Custom Albums State
+  const [userAlbums, setUserAlbums] = useState<UserAlbum[]>(getUserAlbums);
+  const [selectedUserAlbum, setSelectedUserAlbum] = useState<UserAlbum | null>(null);
+  const [isCreateAlbumModalOpen, setIsCreateAlbumModalOpen] = useState(false);
+  const [albumNameInput, setAlbumNameInput] = useState("");
+  const [isAddPhotosModalOpen, setIsAddPhotosModalOpen] = useState(false);
+  const [selectedPhotoIdsForAlbum, setSelectedPhotoIdsForAlbum] = useState<Set<string | number>>(new Set());
+
+  // Auto-Sync Background State
+  const [autoSync, setAutoSync] = useState<boolean>(() => {
+    return localStorage.getItem("cloud_photos_auto_sync") === "true";
+  });
+
+  const handleAutoSyncChange = (enabled: boolean) => {
+    setAutoSync(enabled);
+    localStorage.setItem("cloud_photos_auto_sync", String(enabled));
+    if (enabled) {
+      showToast("Đã bật tự động sao lưu ảnh! 🔄");
+    } else {
+      showToast("Đã tắt tự động sao lưu");
+    }
+  };
 
   // Theme State (Dark / Light / System)
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -90,6 +126,7 @@ export const App: React.FC = () => {
   // Upload & Camera State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const albumFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
 
@@ -162,6 +199,36 @@ export const App: React.FC = () => {
     }
   };
 
+  // Upload ảnh trực tiếp vào một Custom Album
+  const handleFilesSelectedForAlbum = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0 || !selectedUserAlbum) return;
+
+    try {
+      const uploaded = await uploadPhotosToTelegram(config, files, (p) => {
+        setUploadProgress(p);
+      });
+      if (uploaded.length > 0) {
+        setPhotos((prev) => [...uploaded, ...prev]);
+        const newIds = uploaded.map((u) => u.messageId);
+        const updatedAlbums = addPhotosToAlbum(
+          selectedUserAlbum.id,
+          newIds,
+          uploaded[0].thumbnailUrl || uploaded[0].url
+        );
+        setUserAlbums(updatedAlbums);
+        const refreshed = updatedAlbums.find((a) => a.id === selectedUserAlbum.id);
+        if (refreshed) setSelectedUserAlbum(refreshed);
+        showToast(`Đã thêm ${uploaded.length} ảnh mới vào album "${selectedUserAlbum.title}"!`);
+      }
+    } catch (err: any) {
+      showToast("Lỗi tải ảnh: " + (err.message || ""));
+    } finally {
+      setTimeout(() => setUploadProgress(null), 1200);
+      if (albumFileInputRef.current) albumFileInputRef.current.value = "";
+    }
+  };
+
   // Danh sách ảnh yêu thích lưu trong LocalStorage
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
@@ -222,7 +289,14 @@ export const App: React.FC = () => {
     }
   }, [config.apiId, config.apiHash, config.sessionString, config.isLoggedIn]);
 
-  // Phân loại các bài viết thành từng Album
+  // Tự động đồng bộ ngầm khi mở app nếu Auto-Sync bật
+  useEffect(() => {
+    if (autoSync && (config.isLoggedIn || config.sessionString)) {
+      loadPhotos(true);
+    }
+  }, [autoSync]);
+
+  // Phân loại các bài viết cũ thành từng Album
   const postAlbums: PostAlbum[] = useMemo(() => {
     const map = new Map<string, PhotoItem[]>();
 
@@ -344,6 +418,56 @@ export const App: React.FC = () => {
     setConfig(newCfg);
     saveStoredConfig(newCfg);
   };
+
+  // Xử lý tạo Album mới
+  const handleCreateAlbumSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!albumNameInput.trim()) return;
+    const created = createNewAlbum(albumNameInput.trim());
+    const updated = getUserAlbums();
+    setUserAlbums(updated);
+    setAlbumNameInput("");
+    setIsCreateAlbumModalOpen(false);
+    setSelectedUserAlbum(created);
+    showToast(`Đã tạo album "${created.title}" thành công!`);
+  };
+
+  // Thêm ảnh đã có vào User Album
+  const handleConfirmAddPhotosToAlbum = () => {
+    if (!selectedUserAlbum) return;
+    const selectedIds = Array.from(selectedPhotoIdsForAlbum);
+    if (selectedIds.length === 0) {
+      setIsAddPhotosModalOpen(false);
+      return;
+    }
+    const targetPhotos = photos.filter((p) => selectedIds.includes(p.messageId) || selectedIds.includes(p.id));
+    const coverUrl = targetPhotos[0]?.thumbnailUrl || targetPhotos[0]?.url;
+
+    const updated = addPhotosToAlbum(selectedUserAlbum.id, selectedIds, coverUrl);
+    setUserAlbums(updated);
+    const refreshed = updated.find((a) => a.id === selectedUserAlbum.id);
+    if (refreshed) setSelectedUserAlbum(refreshed);
+    setIsAddPhotosModalOpen(false);
+    setSelectedPhotoIdsForAlbum(new Set());
+    showToast(`Đã thêm ${selectedIds.length} ảnh vào album!`);
+  };
+
+  // Xóa User Album
+  const handleDeleteCurrentAlbum = () => {
+    if (!selectedUserAlbum) return;
+    if (window.confirm(`Bạn có chắc chắn muốn xóa album "${selectedUserAlbum.title}"? (Ảnh gốc trên Telegram sẽ không bị xóa)`)) {
+      const updated = deleteAlbum(selectedUserAlbum.id);
+      setUserAlbums(updated);
+      setSelectedUserAlbum(null);
+      showToast("Đã xóa album.");
+    }
+  };
+
+  // Danh sách ảnh của Custom Album đang xem
+  const currentAlbumPhotos = useMemo(() => {
+    if (!selectedUserAlbum) return [];
+    return getPhotosInAlbum(selectedUserAlbum, photos);
+  }, [selectedUserAlbum, photos]);
 
   return (
     <div
@@ -550,11 +674,11 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 3: ALBUMS (BỘ SƯU TẬP THEO BÀI VIẾT / LINK TẢI) */}
+        {/* TAB 3: ALBUMS (BỘ SƯU TẬP ALBUM CHUẨN IPHONE MẶC ĐỊNH) */}
         {currentTab === "albums" && (
-          <div className="p-4 animate-in fade-in duration-200">
-            {selectedAlbum ? (
-              /* Giao diện xem chi tiết 1 Album cụ thể */
+          <div className="p-4 animate-in fade-in duration-200 pb-32">
+            {/* 1. KHI ĐANG MỞ XEM 1 CUSTOM USER ALBUM */}
+            {selectedUserAlbum ? (
               <div>
                 <div
                   className={`flex items-center justify-between mb-4 pb-3 border-b ${
@@ -562,68 +686,222 @@ export const App: React.FC = () => {
                   }`}
                 >
                   <button
-                    onClick={() => setSelectedAlbum(null)}
+                    onClick={() => setSelectedUserAlbum(null)}
                     className="flex items-center text-blue-500 text-sm font-semibold active:opacity-70 -ml-1 py-1 pr-2"
                   >
                     <ChevronLeft className="w-5 h-5 mr-0.5" />
                     <span>Tất cả Album</span>
                   </button>
-                  <span
-                    className={`text-xs ${
-                      isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                    }`}
-                  >
-                    {selectedAlbum.photos.length} bức ảnh
-                  </span>
-                </div>
-
-                <div className="mb-4">
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    {selectedAlbum.title}
-                  </h2>
-                  <p
-                    className={`text-xs mt-1 flex items-center gap-1.5 ${
-                      isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                    }`}
-                  >
-                    <Calendar className="w-3.5 h-3.5 text-blue-500" />
-                    <span>
-                      {selectedAlbum.date.toLocaleDateString("vi-VN", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1">
-                  {selectedAlbum.photos.map((photo) => (
-                    <div
-                      key={photo.id}
-                      onClick={() => setSelectedPhoto(photo)}
-                      className={`aspect-square overflow-hidden cursor-pointer active:opacity-80 ${
-                        isDarkMode ? "bg-neutral-900" : "bg-neutral-200"
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleDeleteCurrentAlbum}
+                      className="p-1.5 text-red-500 hover:text-red-600 active:scale-95 transition-transform"
+                      title="Xóa Album"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <span
+                      className={`text-xs ${
+                        isDarkMode ? "text-neutral-400" : "text-neutral-500"
                       }`}
                     >
-                      <img
-                        src={photo.thumbnailUrl || photo.url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ))}
+                      {currentAlbumPhotos.length} bức ảnh
+                    </span>
+                  </div>
                 </div>
+
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                      {selectedUserAlbum.title}
+                    </h2>
+                    <p
+                      className={`text-xs mt-1 flex items-center gap-1.5 ${
+                        isDarkMode ? "text-neutral-400" : "text-neutral-500"
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                      <span>
+                        Tạo ngày:{" "}
+                        {new Date(selectedUserAlbum.createdAt).toLocaleDateString("vi-VN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Nút Thêm ảnh vào Album */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedPhotoIdsForAlbum(new Set(selectedUserAlbum.photoIds));
+                        setIsAddPhotosModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 shadow-md"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Thêm ảnh
+                    </button>
+                    <button
+                      onClick={() => albumFileInputRef.current?.click()}
+                      className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 border ${
+                        isDarkMode ? "bg-neutral-800 border-neutral-700 text-neutral-300" : "bg-white border-neutral-300 text-neutral-700 shadow-sm"
+                      }`}
+                      title="Tải ảnh mới từ máy vào Album này"
+                    >
+                      <ImagePlus className="w-4 h-4 text-blue-500" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Input chọn ảnh riêng cho album */}
+                <input
+                  ref={albumFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  className="hidden"
+                  onChange={handleFilesSelectedForAlbum}
+                />
+
+                {currentAlbumPhotos.length === 0 ? (
+                  <div className="p-8 text-center my-8">
+                    <div
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 ${
+                        isDarkMode ? "bg-neutral-800 text-neutral-400" : "bg-neutral-200 text-neutral-600"
+                      }`}
+                    >
+                      <ImageIcon className="w-7 h-7" />
+                    </div>
+                    <h4 className="font-semibold text-sm mb-1">Album chưa có ảnh</h4>
+                    <p className="text-xs text-neutral-400 max-w-xs mx-auto mb-4">
+                      Chạm vào "Thêm ảnh" để chọn từ kho ảnh đã lưu hoặc tải ảnh mới từ máy vào đây!
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSelectedPhotoIdsForAlbum(new Set(selectedUserAlbum.photoIds));
+                        setIsAddPhotosModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 active:scale-95 shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Chọn ảnh vào Album
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1">
+                    {currentAlbumPhotos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        onClick={() => setSelectedPhoto(photo)}
+                        className={`aspect-square overflow-hidden cursor-pointer active:opacity-80 ${
+                          isDarkMode ? "bg-neutral-900" : "bg-neutral-200"
+                        }`}
+                      >
+                        <img
+                          src={photo.thumbnailUrl || photo.url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
-              /* Danh sách tổng thể các Albums */
+              /* 2. DANH SÁCH TẤT CẢ ALBUM (CHUẨN IPHONE PHOTOS) */
               <div>
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Folder className="w-5 h-5 text-blue-500" />
-                  Bộ sưu tập Album
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Folder className="w-5 h-5 text-blue-500" />
+                    Album của tôi
+                  </h2>
+                  <button
+                    onClick={() => setIsCreateAlbumModalOpen(true)}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 shadow-md"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    + Tạo Album
+                  </button>
+                </div>
 
-                {/* Danh mục đặc biệt */}
+                {/* Danh sách User Custom Albums */}
+                {userAlbums.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 mb-6">
+                    {userAlbums.map((album) => {
+                      const albumItems = getPhotosInAlbum(album, photos);
+                      const cover =
+                        album.coverPhotoUrl ||
+                        albumItems[0]?.thumbnailUrl ||
+                        albumItems[0]?.url;
+
+                      return (
+                        <div
+                          key={album.id}
+                          onClick={() => setSelectedUserAlbum(album)}
+                          className={`border rounded-2xl overflow-hidden cursor-pointer active:scale-98 transition-all group ${
+                            isDarkMode
+                              ? "bg-neutral-900 border-neutral-800"
+                              : "bg-white border-neutral-200 shadow-sm"
+                          }`}
+                        >
+                          <div className="aspect-square relative overflow-hidden bg-gradient-to-tr from-blue-900/40 to-indigo-900/40 flex items-center justify-center">
+                            {cover ? (
+                              <img
+                                src={cover}
+                                alt=""
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <Folder className="w-12 h-12 text-blue-500/60" />
+                            )}
+                            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white">
+                              <span>{album.photoIds.length} ảnh</span>
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <h4 className="font-semibold text-sm truncate">
+                              {album.title}
+                            </h4>
+                            <p
+                              className={`text-[11px] mt-0.5 ${
+                                isDarkMode ? "text-neutral-400" : "text-neutral-500"
+                              }`}
+                            >
+                              {album.photoIds.length} bức ảnh
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {userAlbums.length === 0 && (
+                  <div
+                    onClick={() => setIsCreateAlbumModalOpen(true)}
+                    className={`p-6 rounded-2xl border border-dashed mb-6 text-center cursor-pointer active:scale-98 transition-transform ${
+                      isDarkMode ? "border-neutral-800 bg-neutral-900/40" : "border-neutral-300 bg-white"
+                    }`}
+                  >
+                    <FolderPlus className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                    <h4 className="text-sm font-semibold">Chưa có album tùy chỉnh nào</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Chạm vào đây để tạo Album đầu tiên của bạn
+                    </p>
+                  </div>
+                )}
+
+                {/* Danh mục đặc biệt mặc định */}
+                <h3
+                  className={`text-sm font-semibold mb-3 ${
+                    isDarkMode ? "text-neutral-300" : "text-neutral-700"
+                  }`}
+                >
+                  Mục Album tiện ích
+                </h3>
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   {/* Mục Yêu Thích */}
                   <div
@@ -676,57 +954,59 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Danh sách các Album */}
-                <div className="mb-3 flex items-center justify-between">
-                  <h3
-                    className={`text-sm font-semibold ${
-                      isDarkMode ? "text-neutral-300" : "text-neutral-700"
-                    }`}
-                  >
-                    Album theo bài viết ({postAlbums.length})
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {postAlbums.map((album) => (
-                    <div
-                      key={album.id}
-                      onClick={() => setSelectedAlbum(album)}
-                      className={`border rounded-2xl overflow-hidden cursor-pointer active:scale-98 transition-all group ${
-                        isDarkMode
-                          ? "bg-neutral-900 border-neutral-800"
-                          : "bg-white border-neutral-200 shadow-sm"
+                {/* Danh mục Album tự động theo tin nhắn Telegram */}
+                {postAlbums.length > 0 && (
+                  <>
+                    <h3
+                      className={`text-sm font-semibold mb-3 ${
+                        isDarkMode ? "text-neutral-300" : "text-neutral-700"
                       }`}
                     >
-                      <div className="aspect-square relative overflow-hidden bg-neutral-800">
-                        <img
-                          src={album.coverPhoto.thumbnailUrl || album.coverPhoto.url}
-                          alt=""
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white">
-                          <Layers className="w-3 h-3 text-blue-400" />
-                          <span>{album.photos.length}</span>
-                        </div>
-                      </div>
-                      <div className="p-3">
-                        <h4 className="font-semibold text-sm truncate">
-                          {album.title}
-                        </h4>
-                        <p
-                          className={`text-[11px] mt-0.5 ${
-                            isDarkMode ? "text-neutral-400" : "text-neutral-500"
+                      Album theo bài viết ({postAlbums.length})
+                    </h3>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {postAlbums.map((album) => (
+                        <div
+                          key={album.id}
+                          onClick={() => setSelectedAlbum(album)}
+                          className={`border rounded-2xl overflow-hidden cursor-pointer active:scale-98 transition-all group ${
+                            isDarkMode
+                              ? "bg-neutral-900 border-neutral-800"
+                              : "bg-white border-neutral-200 shadow-sm"
                           }`}
                         >
-                          {album.date.toLocaleDateString("vi-VN", {
-                            day: "numeric",
-                            month: "short",
-                          })}
-                        </p>
-                      </div>
+                          <div className="aspect-square relative overflow-hidden bg-neutral-800">
+                            <img
+                              src={album.coverPhoto.thumbnailUrl || album.coverPhoto.url}
+                              alt=""
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white">
+                              <Layers className="w-3 h-3 text-blue-400" />
+                              <span>{album.photos.length}</span>
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <h4 className="font-semibold text-sm truncate">
+                              {album.title}
+                            </h4>
+                            <p
+                              className={`text-[11px] mt-0.5 ${
+                                isDarkMode ? "text-neutral-400" : "text-neutral-500"
+                              }`}
+                            >
+                              {album.date.toLocaleDateString("vi-VN", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -734,7 +1014,7 @@ export const App: React.FC = () => {
 
         {/* TAB 4: KỶ NIỆM (MEMORIES) */}
         {currentTab === "memories" && (
-          <div className="p-4 space-y-6 animate-in fade-in duration-200">
+          <div className="p-4 space-y-6 animate-in fade-in duration-200 pb-32">
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-500" />
@@ -817,66 +1097,144 @@ export const App: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {/* Mục: Bộ sưu tập Carousels */}
-            {postAlbums.filter((a) => a.photos.length > 1).length > 0 && (
-              <div>
-                <h3
-                  className={`text-sm font-semibold mb-3 flex items-center gap-1.5 ${
-                    isDarkMode ? "text-neutral-200" : "text-neutral-800"
-                  }`}
-                >
-                  <Layers className="w-4 h-4 text-purple-500" />
-                  Bài viết nhiều ảnh đáng nhớ
-                </h3>
-                <div className="space-y-3">
-                  {postAlbums
-                    .filter((a) => a.photos.length > 1)
-                    .slice(0, 3)
-                    .map((album) => (
-                      <div
-                        key={album.id}
-                        onClick={() => {
-                          setSelectedAlbum(album);
-                          setCurrentTab("albums");
-                        }}
-                        className={`p-3 rounded-2xl flex items-center gap-3 cursor-pointer active:scale-98 transition-all border ${
-                          isDarkMode
-                            ? "bg-neutral-900/80 border-neutral-800 text-white"
-                            : "bg-white border-neutral-200 text-neutral-900 shadow-sm"
-                        }`}
-                      >
-                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-neutral-800 shrink-0">
-                          <img
-                            src={album.coverPhoto.thumbnailUrl || album.coverPhoto.url}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-sm truncate">
-                            {album.title}
-                          </h4>
-                          <p
-                            className={`text-xs mt-0.5 truncate ${
-                              isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                            }`}
-                          >
-                            {album.coverPhoto.caption || "Ảnh lưu trữ"}
-                          </p>
-                          <span className="inline-block mt-1 text-[10px] text-purple-500 bg-purple-500/15 px-2 py-0.5 rounded-md font-semibold">
-                            Bộ sưu tập {album.photos.length} ảnh
-                          </span>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </main>
+
+      {/* MODAL 1: TẠO ALBUM MỚI */}
+      {isCreateAlbumModalOpen && (
+        <div
+          onClick={() => setIsCreateAlbumModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-sm rounded-3xl p-5 shadow-2xl border ${
+              isDarkMode
+                ? "bg-[#1c1c1e] text-white border-neutral-800"
+                : "bg-white text-neutral-900 border-neutral-300"
+            }`}
+          >
+            <h3 className="text-base font-bold text-center mb-1">Album mới</h3>
+            <p className="text-xs text-neutral-400 text-center mb-4">
+              Nhập tên cho album này
+            </p>
+
+            <form onSubmit={handleCreateAlbumSubmit} className="space-y-4">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Ví dụ: Du lịch, Gia đình, Bạn bè..."
+                value={albumNameInput}
+                onChange={(e) => setAlbumNameInput(e.target.value)}
+                className={`w-full rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  isDarkMode
+                    ? "bg-neutral-800 border border-neutral-700 text-white"
+                    : "bg-neutral-100 border border-neutral-300 text-black"
+                }`}
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateAlbumModalOpen(false)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold ${
+                    isDarkMode ? "bg-neutral-800 text-neutral-300" : "bg-neutral-200 text-neutral-700"
+                  }`}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={!albumNameInput.trim()}
+                  className="flex-1 py-2.5 bg-blue-600 disabled:opacity-50 text-white font-semibold rounded-xl text-xs active:scale-98 transition-transform"
+                >
+                  Lưu
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CHỌN ẢNH ĐÃ CÓ TRONG KHO VÀO ALBUM */}
+      {isAddPhotosModalOpen && selectedUserAlbum && (
+        <div
+          onClick={() => setIsAddPhotosModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border max-h-[85vh] flex flex-col ${
+              isDarkMode
+                ? "bg-[#1c1c1e] text-white border-neutral-800"
+                : "bg-white text-neutral-900 border-neutral-300"
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-3">
+              <div>
+                <h3 className="text-base font-bold">Thêm ảnh vào Album</h3>
+                <p className="text-xs text-neutral-400">
+                  Đã chọn {selectedPhotoIdsForAlbum.size} ảnh
+                </p>
+              </div>
+              <button
+                onClick={handleConfirmAddPhotosToAlbum}
+                className="px-4 py-1.5 bg-blue-600 text-white font-semibold rounded-xl text-xs active:scale-95 shadow-md"
+              >
+                Xong
+              </button>
+            </div>
+
+            {/* Lưới chọn ảnh */}
+            <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-1 pr-0.5">
+              {photos.map((photo) => {
+                const isSelected =
+                  selectedPhotoIdsForAlbum.has(photo.messageId) ||
+                  selectedPhotoIdsForAlbum.has(photo.id);
+
+                const handleToggle = () => {
+                  setSelectedPhotoIdsForAlbum((prev) => {
+                    const next = new Set(prev);
+                    if (isSelected) {
+                      next.delete(photo.messageId);
+                      next.delete(photo.id);
+                    } else {
+                      next.add(photo.messageId);
+                    }
+                    return next;
+                  });
+                };
+
+                return (
+                  <div
+                    key={photo.id}
+                    onClick={handleToggle}
+                    className="relative aspect-square overflow-hidden cursor-pointer active:opacity-80 group"
+                  >
+                    <img
+                      src={photo.thumbnailUrl || photo.url}
+                      alt=""
+                      className={`w-full h-full object-cover transition-opacity ${
+                        isSelected ? "opacity-75" : ""
+                      }`}
+                    />
+                    <div
+                      className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                        isSelected
+                          ? "bg-blue-600 border-white text-white shadow-md scale-105"
+                          : "border-white/80 bg-black/40 text-transparent"
+                      }`}
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Inputs Ẩn: Thư viện & Camera */}
       <input
@@ -906,7 +1264,6 @@ export const App: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm space-y-2 animate-in slide-in-from-bottom duration-250"
           >
-            {/* Hộp tùy chọn chính */}
             <div
               className={`rounded-2xl overflow-hidden divide-y backdrop-blur-2xl shadow-2xl ${
                 isDarkMode
@@ -920,7 +1277,6 @@ export const App: React.FC = () => {
                 </p>
               </div>
 
-              {/* Tùy chọn 1: Thư viện ảnh */}
               <button
                 type="button"
                 onClick={() => {
@@ -938,7 +1294,6 @@ export const App: React.FC = () => {
                 <ChevronRight className="w-4 h-4 text-neutral-400" />
               </button>
 
-              {/* Tùy chọn 2: Chụp ảnh mới (Camera) */}
               <button
                 type="button"
                 onClick={() => {
@@ -957,7 +1312,6 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Nút Hủy phong cách iOS */}
             <button
               type="button"
               onClick={() => setIsUploadMenuOpen(false)}
@@ -986,7 +1340,13 @@ export const App: React.FC = () => {
       {selectedPhoto && (
         <PhotoViewer
           photo={selectedPhoto}
-          allPhotos={selectedAlbum ? selectedAlbum.photos : filteredPhotos}
+          allPhotos={
+            selectedUserAlbum
+              ? currentAlbumPhotos
+              : selectedAlbum
+              ? selectedAlbum.photos
+              : filteredPhotos
+          }
           config={config}
           isFavorite={
             favorites.has(String(selectedPhoto.id)) ||
@@ -998,12 +1358,16 @@ export const App: React.FC = () => {
           onDeletePhoto={async (messageId) => {
             await removePhotoFromCache(messageId);
             setPhotos((prev) => prev.filter((p) => p.messageId !== messageId));
+            if (selectedUserAlbum) {
+              removePhotoFromAlbum(selectedUserAlbum.id, messageId);
+              setUserAlbums(getUserAlbums());
+            }
             await deleteTelegramPhoto(config, messageId);
           }}
         />
       )}
 
-      {/* Settings Modal (Cấu hình Telegram thu gọn, Theme Dark/Light, Thông tin Nguyễn Điền) */}
+      {/* Settings Modal (Cấu hình thu gọn Drilldown, Theme, Tác giả Diễn Nguyễn, Auto-sync) */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -1013,6 +1377,12 @@ export const App: React.FC = () => {
         theme={theme}
         onThemeChange={handleThemeChange}
         isDarkMode={isDarkMode}
+        autoSync={autoSync}
+        onAutoSyncChange={handleAutoSyncChange}
+        onTriggerSyncNow={() => {
+          setIsSettingsOpen(false);
+          fileInputRef.current?.click();
+        }}
       />
     </div>
   );

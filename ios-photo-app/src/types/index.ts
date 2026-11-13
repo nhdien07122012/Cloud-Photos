@@ -31,6 +31,14 @@ export interface PostAlbum {
   photos: PhotoItem[];
 }
 
+export interface UserAlbum {
+  id: string;
+  title: string;
+  createdAt: number;
+  coverPhotoUrl?: string;
+  photoIds: (string | number)[];
+}
+
 export interface TelegramConfig {
   apiId: string;
   apiHash: string;

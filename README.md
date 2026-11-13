@@ -21,3 +21,8 @@
 - **Mobile Runtime**: Capacitor 8 iOS.
 - **Storage & MTProto**: GramJS (Telegram MTProto Client), Web IndexedDB.
 - **CI/CD**: GitHub Actions macOS Runner (Xcode 16).
+
+---
+
+## 👨‍💻 Tác Giả & Phát Triển
+- **Diễn Nguyễn** (`@diennguyen`) - Kiến trúc sư & Nhà phát triển chính của Cloud-Photos.
