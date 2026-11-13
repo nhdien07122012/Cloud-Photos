@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 14)] - 2026-11-13
-- **Commit SHA**: `f5d8731`
+- **Commit SHA**: `0296857`
 - **Mục tiêu**:
   1. Khắc phục triệt để lỗi "Vừa hoàn tất sao lưu gần đây" khi người dùng bật tắt sao lưu tự động:
      - Xóa bỏ tình trạng xung đột chạy đua (Race Condition) giữa hàm Toggle `handleAutoSyncChange` và `useEffect([autoSync])`. Dùng `initialSyncDoneRef` đảm bảo app chỉ kích hoạt quét ngầm 1 lần duy nhất khi khởi động.
