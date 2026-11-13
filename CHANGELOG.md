@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 19)] - 2026-11-14
-- **Commit SHA**: Pending CI/CD
+- **Commit SHA**: `4ea5c35`
 - **Mục tiêu**:
   1. Khắc phục triệt để hiện tượng giật khung hình và chớp nháy trắng màn hình:
      - **Nguyên nhân gốc rễ**:
