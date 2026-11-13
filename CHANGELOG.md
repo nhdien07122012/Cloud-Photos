@@ -4,6 +4,35 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 19)] - 2026-11-14
+- **Commit SHA**: Pending CI/CD
+- **Mục tiêu**:
+  1. Khắc phục triệt để hiện tượng giật khung hình và chớp nháy trắng màn hình:
+     - **Nguyên nhân gốc rễ**:
+       + Trong `PhotoGrid.tsx`, cơ chế phục hồi cũ dùng render có điều kiện hoán đổi giữa `<img>` và `<div>` khi ảnh gặp lỗi, gây ra việc unmount và remount liên tục các thẻ ảnh. Khi nhiều ảnh cùng tải hoặc lỗi, việc huỷ và tạo lại DOM element kích hoạt layout recalculation và repaint liên tục trên WebKit Safari, khiến màn hình chớp nháy trắng.
+       + Vòng lặp `onError` vô tận: Không có giới hạn số lần retry cho từng ảnh, khiến ảnh lỗi liên tục kích hoạt `onError` $\to$ set state $\to$ re-render toàn app $\to$ lỗi lại.
+       + Khối thông báo loading cao 80px nằm ngay trên `PhotoGrid` trong `App.tsx` xuất hiện rồi biến mất đột ngột làm toàn bộ lưới ảnh bị giật nhảy lên xuống 60-80px.
+       + Việc revoke `objectUrlMap` khi dọn dẹp bộ nhớ đệm làm mất URL ảnh đang hiển thị.
+     - **Giải pháp xử lý**:
+       + Thiết kế lại `PhotoGrid.tsx` với kiến trúc `PhotoGridItem` (được bọc `React.memo` độc lập):
+         * Cố định cấu trúc DOM: Luôn có một lớp nền placeholder tối tĩnh (`bg-neutral-900`) bên dưới, ảnh phía trên được tải và fade-in mượt mà (`opacity-0` $\to$ `opacity-100`). Tuyệt đối **không bao giờ unmount thẻ ảnh**, loại bỏ 100% hiện tượng chớp trắng.
+         * Khống chế `retryAttempted`: Mỗi ảnh chỉ thử nạp lại tối đa 1 lần duy nhất, nếu không thành công sẽ giữ nguyên placeholder tĩnh và dừng hẳn, chấm dứt hoàn toàn vòng lặp vô tận.
+         * Không gọi `setPhotos` toàn app khi nạp lại từng ảnh: Ô ảnh tự cập nhật URL cục bộ mà không bắt toàn bộ `App` re-render.
+       + `App.tsx`: Chỉ hiển thị loading kết nối khi kho ảnh hoàn toàn rỗng lúc mới mở app, không bao giờ chèn khối loading đẩy giật layout khi đã có ảnh trong kho. Kiểm tra trùng khớp danh sách ảnh trước khi cập nhật state để tránh re-render thừa.
+       + `photoStorage.ts`: Dọn dẹp bản ghi hỏng trực tiếp trong IndexedDB mà không đụng tới các `objectUrlMap` đang hiển thị trên màn hình.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/PhotoGrid.tsx`: Triển khai `PhotoGridItem` bọc memo, cố định DOM, triệt tiêu unmount và vòng lặp retry.
+  - `ios-photo-app/src/App.tsx`: Ngăn layout jumping, cô lập cập nhật ảnh đơn lẻ, so sánh tham chiếu danh sách ảnh chống re-render.
+  - `ios-photo-app/src/services/photoStorage.ts`: Bảo vệ Object URL phiên làm việc, dọn dẹp ngầm an toàn.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Đồng bộ nhãn hiển thị lên Build 19.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `19`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 18)] - 2026-11-14
 - **Commit SHA**: `45f0147`
 - **Mục tiêu**:

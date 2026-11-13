@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import type { PhotoItem, DateGroup } from "../types";
-import { Layers, ImagePlus, Check, RefreshCw, Image as ImageIcon } from "lucide-react";
+import { Layers, ImagePlus, Check, Image as ImageIcon } from "lucide-react";
 
 interface PhotoGridProps {
   groups: DateGroup[];
@@ -14,6 +14,109 @@ interface PhotoGridProps {
   onRetryPhoto?: (photo: PhotoItem) => Promise<string | null>;
 }
 
+interface PhotoGridItemProps {
+  photo: PhotoItem;
+  isSelected: boolean;
+  isSelectMode: boolean;
+  isDarkMode: boolean;
+  onClick: () => void;
+  onRetryPhoto?: (photo: PhotoItem) => Promise<string | null>;
+}
+
+/**
+ * Từng ô ảnh độc lập, được Memoize chống re-render giật lag
+ * Giữ DOM ổn định, không bao giờ unmount thẻ ảnh, chống trắng màn hình
+ */
+const PhotoGridItem: React.FC<PhotoGridItemProps> = memo(
+  ({ photo, isSelected, isSelectMode, isDarkMode, onClick, onRetryPhoto }) => {
+    const [hasError, setHasError] = useState(false);
+    const [retryAttempted, setRetryAttempted] = useState(false);
+    const [currentSrc, setCurrentSrc] = useState(photo.thumbnailUrl || photo.url);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    const handleError = () => {
+      // Nếu đã từng retry 1 lần cho ảnh này thì dừng hẳn, không retry lặp vô tận gây giật khung hình
+      if (retryAttempted) {
+        setHasError(true);
+        return;
+      }
+      setRetryAttempted(true);
+
+      if (onRetryPhoto) {
+        onRetryPhoto(photo)
+          .then((newUrl) => {
+            if (newUrl && newUrl !== currentSrc) {
+              setCurrentSrc(newUrl);
+              setHasError(false);
+            } else {
+              setHasError(true);
+            }
+          })
+          .catch(() => {
+            setHasError(true);
+          });
+      } else {
+        setHasError(true);
+      }
+    };
+
+    return (
+      <div
+        onClick={onClick}
+        className={`relative aspect-square overflow-hidden active:opacity-85 transition-all cursor-pointer group ${
+          isDarkMode ? "bg-neutral-900" : "bg-neutral-200"
+        } ${isSelectMode && isSelected ? "p-1 bg-blue-600 rounded-xl" : ""}`}
+      >
+        {/* 1. LỚP NỀN PLACEHOLDER TĨNH (KHÔNG BAO GIỜ BỊ TRẮNG MÀN HÌNH) */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-neutral-500 pointer-events-none">
+          <ImageIcon className="w-5 h-5 opacity-40 mb-1" />
+          <span className="text-[10px] text-center font-medium truncate max-w-full opacity-60">
+            {photo.caption || "Ảnh đám mây"}
+          </span>
+        </div>
+
+        {/* 2. ẢNH THỰC TẾ (FADE-IN MƯỢT MÀ KHI TẢI XONG, KHÔNG UNMOUNT DOM) */}
+        {!hasError && (
+          <img
+            src={currentSrc}
+            alt=""
+            onLoad={() => setIsLoaded(true)}
+            onError={handleError}
+            className={`absolute inset-0 w-full h-full object-cover select-none pointer-events-none transition-opacity duration-200 ${
+              isLoaded ? "opacity-100" : "opacity-0"
+            } ${isSelectMode && isSelected ? "rounded-lg" : "group-active:scale-98"}`}
+            loading="lazy"
+          />
+        )}
+
+        {/* 3. BADGE CAROUSEL (BỘ NHIỀU ẢNH) */}
+        {photo.isCarousel && !isSelectMode && (
+          <div className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/60 backdrop-blur-sm text-white pointer-events-none">
+            <Layers className="w-3.5 h-3.5" />
+          </div>
+        )}
+
+        {/* 4. CHECKBOX CHỌN NHIỀU ẢNH */}
+        {isSelectMode && (
+          <div className="absolute top-2 right-2 pointer-events-none">
+            <div
+              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                isSelected
+                  ? "bg-blue-600 border-white text-white shadow-lg scale-105"
+                  : "bg-black/40 border-white/80 text-transparent"
+              }`}
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+PhotoGridItem.displayName = "PhotoGridItem";
+
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
   groups,
   onSelectPhoto,
@@ -25,40 +128,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onResetFilter,
   onRetryPhoto,
 }) => {
-  // Trạng thái theo dõi các ảnh bị lỗi để tự động khôi phục
-  const [retryingIds, setRetryingIds] = useState<Set<number>>(new Set());
-  const [failedIds, setFailedIds] = useState<Set<number>>(new Set());
-
-  const handleImageError = (photo: PhotoItem) => {
-    const msgId = photo.messageId;
-    if (retryingIds.has(msgId) || failedIds.has(msgId)) return;
-
-    if (onRetryPhoto) {
-      setRetryingIds((prev) => new Set(prev).add(msgId));
-      onRetryPhoto(photo)
-        .then((newUrl) => {
-          if (newUrl) {
-            photo.url = newUrl;
-            photo.thumbnailUrl = newUrl;
-          } else {
-            setFailedIds((prev) => new Set(prev).add(msgId));
-          }
-        })
-        .catch(() => {
-          setFailedIds((prev) => new Set(prev).add(msgId));
-        })
-        .finally(() => {
-          setRetryingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(msgId);
-            return next;
-          });
-        });
-    } else {
-      setFailedIds((prev) => new Set(prev).add(msgId));
-    }
-  };
-
   if (groups.length === 0) {
     const isFiltered = activeFilter && activeFilter !== "Tất cả";
 
@@ -83,7 +152,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           <button
             type="button"
             onClick={onResetFilter}
-            className="mt-5 px-5 py-2.5 rounded-full text-sm font-bold bg-blue-600 text-white shadow-lg shadow-blue-600/30 active:scale-95 transition-transform"
+            className="mt-5 px-5 py-2.5 rounded-full text-sm font-bold bg-blue-600 text-white shadow-lg shadow-blue-600/30 active:scale-95 transition-transform cursor-pointer"
           >
             Xem tất cả ảnh Thư viện
           </button>
@@ -119,8 +188,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             {group.photos.map((photo) => {
               const isSelected =
                 selectedPhotoIds.has(photo.id) || selectedPhotoIds.has(photo.messageId);
-              const isRetrying = retryingIds.has(photo.messageId);
-              const isFailed = failedIds.has(photo.messageId);
 
               const handleClick = () => {
                 if (isSelectMode && onToggleSelectPhoto) {
@@ -131,59 +198,15 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
               };
 
               return (
-                <div
+                <PhotoGridItem
                   key={photo.id}
+                  photo={photo}
+                  isSelected={isSelected}
+                  isSelectMode={isSelectMode}
+                  isDarkMode={isDarkMode}
                   onClick={handleClick}
-                  className={`relative aspect-square overflow-hidden active:opacity-75 transition-all cursor-pointer group ${
-                    isDarkMode ? "bg-neutral-900" : "bg-neutral-200"
-                  } ${isSelectMode && isSelected ? "p-1 bg-blue-600 rounded-xl" : ""}`}
-                >
-                  {isRetrying ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-neutral-800/80 text-neutral-400">
-                      <RefreshCw className="w-5 h-5 animate-spin text-blue-400 mb-1" />
-                      <span className="text-[10px] font-semibold text-center truncate">Đang nạp ảnh...</span>
-                    </div>
-                  ) : isFailed ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-neutral-800/50 text-neutral-400">
-                      <ImageIcon className="w-6 h-6 text-neutral-500 mb-1" />
-                      <span className="text-[10px] text-center font-medium truncate max-w-full">
-                        {photo.caption || "Ảnh đám mây"}
-                      </span>
-                    </div>
-                  ) : (
-                    <img
-                      src={photo.thumbnailUrl || photo.url}
-                      alt=""
-                      onError={() => handleImageError(photo)}
-                      className={`w-full h-full object-cover select-none pointer-events-none transform transition-transform ${
-                        isSelectMode && isSelected ? "rounded-lg" : "group-active:scale-98"
-                      }`}
-                      loading="lazy"
-                    />
-                  )}
-
-                  {/* Badge Carousel (Nhiều ảnh) */}
-                  {photo.isCarousel && !isSelectMode && (
-                    <div className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/60 backdrop-blur-sm text-white">
-                      <Layers className="w-3.5 h-3.5" />
-                    </div>
-                  )}
-
-                  {/* Checkbox khi ở Chế độ Chọn (Select Mode) */}
-                  {isSelectMode && (
-                    <div className="absolute top-2 right-2">
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                          isSelected
-                            ? "bg-blue-600 border-white text-white shadow-lg scale-105"
-                            : "bg-black/40 border-white/80 text-transparent"
-                        }`}
-                      >
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  onRetryPhoto={onRetryPhoto}
+                />
               );
             })}
           </div>

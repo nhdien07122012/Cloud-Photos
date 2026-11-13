@@ -81,24 +81,15 @@ export const App: React.FC = () => {
   const [isAddPhotosModalOpen, setIsAddPhotosModalOpen] = useState(false);
   const [selectedPhotoIdsForAlbum, setSelectedPhotoIdsForAlbum] = useState<Set<string | number>>(new Set());
 
-  // Tự động khôi phục ảnh lỗi khi không load được từ Telegram
+  // Tự động khôi phục ảnh lỗi khi không load được từ Telegram (không trigger re-render toàn app)
   const handleRetryPhoto = async (photo: PhotoItem): Promise<string | null> => {
     try {
       const newUrl = await reloadSinglePhotoFromTelegram(config, photo.messageId);
-      if (newUrl) {
-        setPhotos((prev) =>
-          prev.map((p) =>
-            p.messageId === photo.messageId
-              ? { ...p, url: newUrl, thumbnailUrl: newUrl }
-              : p
-          )
-        );
-        return newUrl;
-      }
+      return newUrl;
     } catch (e) {
       console.warn("Lỗi nạp lại ảnh đơn lẻ:", e);
+      return null;
     }
-    return null;
   };
 
   // Theme State (Dark / Light / System)
@@ -288,6 +279,18 @@ export const App: React.FC = () => {
       const data = await fetchChannelPhotos(config, 100);
       if (data && data.length > 0) {
         setPhotos((prev) => {
+          // Nếu danh sách không thay đổi, giữ nguyên tham chiếu để chống giật khung hình
+          if (
+            prev.length === data.length &&
+            prev.every(
+              (p, idx) =>
+                p.messageId === data[idx]?.messageId &&
+                p.url === data[idx]?.url
+            )
+          ) {
+            return prev;
+          }
+
           // Smart merge: Đảm bảo không bao giờ làm mất ảnh trong kho đang hiển thị
           const map = new Map<number, PhotoItem>();
           prev.forEach((p) => map.set(p.messageId, p));
@@ -818,14 +821,15 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {loading && (
+            {/* Chỉ hiện loading khi kho ảnh chưa có gì để không đẩy nhảy layout khi đang xem */}
+            {loading && photos.length === 0 && (
               <div
-                className={`flex items-center justify-center py-10 gap-2 text-base font-semibold ${
+                className={`flex items-center justify-center py-20 gap-2 text-base font-semibold ${
                   isDarkMode ? "text-neutral-400" : "text-neutral-500"
                 }`}
               >
                 <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
-                <span>Đang tải ảnh từ Telegram...</span>
+                <span>Đang kết nối kho ảnh Telegram...</span>
               </div>
             )}
 

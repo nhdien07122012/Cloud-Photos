@@ -115,12 +115,16 @@ export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
           });
         }
 
-        // Tự động dọn dẹp các bản ghi hỏng chạy nền để không chiếm bộ nhớ
+        // Tự động dọn dẹp các bản ghi hỏng trong IndexedDB mà không đụng tới URL đang hiển thị
         if (corruptIdsToDelete.length > 0) {
           console.warn(
             `[photoStorage] Đã tự động dọn dẹp ${corruptIdsToDelete.length} bản ghi rác 0-byte khỏi IndexedDB.`
           );
-          removeMultiplePhotosFromCache(corruptIdsToDelete);
+          openDatabase().then((db) => {
+            const tx = db.transaction(STORE_NAME, "readwrite");
+            const store = tx.objectStore(STORE_NAME);
+            corruptIdsToDelete.forEach((id) => store.delete(id));
+          }).catch(() => {});
         }
 
         resolve(validPhotos);
