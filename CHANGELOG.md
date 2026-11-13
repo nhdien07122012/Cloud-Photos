@@ -4,6 +4,22 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 10)] - 2026-11-13
+- **Commit SHA**: `81e32b0`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi biên dịch Xcode trong CI/CD GitHub Actions: `AppDelegate.swift:183:45: error: value of type 'PHPhotoLibrary' has no member 'presentLimitedLibraryPicker'`.
+  2. Bổ sung `import PhotosUI` vào `AppDelegate.swift` (phương thức mở picker chọn ảnh giới hạn `presentLimitedLibraryPicker(from:)` của Apple PhotoKit nằm trong framework `PhotosUI` chứ không nằm trong framework cơ sở `Photos`).
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Thêm `import PhotosUI`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp số hiệu bản dựng lên `CloudPhotos v1.3 • Build 10`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `10`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 9)] - 2026-11-13
 - **Commit SHA**: `246e746`
 - **Mục tiêu**:

@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import Photos
+import PhotosUI
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
