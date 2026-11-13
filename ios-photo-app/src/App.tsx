@@ -100,17 +100,23 @@ export const App: React.FC = () => {
       showToast("Đang quét thư viện ảnh...");
     }
 
-    // Bộ đếm an toàn 25 giây tự động giải phóng lock và ẩn banner nếu mạng bị treo
-    const safetyTimeout = setTimeout(() => {
-      isSyncingRef.current = false;
-      setIsAutoSyncing(false);
-      setAutoSyncStatusText("");
-    }, 25000);
+    // Watchdog an toàn: tự động reset khi có tiến trình mới, chỉ giải phóng nếu mạng bị treo cứng quá 45 giây
+    let watchdogTimer: any = null;
+    const resetWatchdog = () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogTimer = setTimeout(() => {
+        isSyncingRef.current = false;
+        setIsAutoSyncing(false);
+        setAutoSyncStatusText("");
+      }, 45000);
+    };
+    resetWatchdog();
 
     try {
       const res = await runAutoSync(
         config,
         (current, total, file) => {
+          resetWatchdog();
           setIsAutoSyncing(true);
           setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
         },
@@ -135,7 +141,7 @@ export const App: React.FC = () => {
       console.error("Auto sync trigger error:", e);
       if (notify) showToast("Lỗi đồng bộ tự động: " + (e.message || ""));
     } finally {
-      clearTimeout(safetyTimeout);
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       isSyncingRef.current = false;
       setIsAutoSyncing(false);
       setAutoSyncStatusText("");

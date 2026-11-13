@@ -1183,7 +1183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 14 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 15 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

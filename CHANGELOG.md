@@ -4,6 +4,29 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 15)] - 2026-11-13
+- **Commit SHA**: `11b8119`
+- **Mục tiêu**:
+  1. Khắc phục việc sao lưu bị dừng sau 12 ảnh:
+     - Trước đây: `runAutoSync` chỉ cắt đúng 1 lô 12 ảnh (`unsynced.slice(0, 12)`), tải xong thì return và dừng hẳn tiến trình, người dùng có nhiều ảnh hơn phải tự mở đi mở lại app.
+     - Nâng cấp: Triển khai vòng lặp liên tục (`Continuous Batch Queue`) xử lý toàn bộ số ảnh chưa sao lưu theo từng lô 10 ảnh (vừa tối ưu giải phóng RAM WebKit trên iPhone, vừa đảm bảo sao lưu xuyên suốt 100% đến bức ảnh cuối cùng: 1..10, 11..20, ... đến hết).
+  2. Nâng giới hạn quét thư viện Camera Roll:
+     - Tăng từ 60 ảnh lên 200 ảnh mới nhất trong PhotoKit để hỗ trợ người dùng có số lượng lớn ảnh mới chụp chưa sao lưu.
+  3. Cải tiến bộ đếm an toàn Watchdog:
+     - Thay thế timeout cố định 25s bằng Watchdog tự động reset mỗi khi có tiến trình ảnh mới được tải lên (`resetWatchdog()`), chỉ tự giải phóng nếu kết nối mạng Telegram bị đơ cứng quá 45 giây mà không có bất kỳ chuyển động nào.
+  4. Nâng cấp số hiệu bản dựng lên `CloudPhotos v1.3 • Build 15`.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/autoSyncService.ts`: Tăng giới hạn quét lên 200 ảnh, bổ sung vòng lặp lô `for (batchStart = 0; ... BATCH_SIZE = 10)` xử lý liên tục cho đến khi hoàn tất toàn bộ danh sách `unsynced`.
+  - `ios-photo-app/src/App.tsx`: Nâng cấp cơ chế Watchdog tự động reset theo tiến độ tải ảnh (`resetWatchdog()`).
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng version text lên `v1.3 • Build 15`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `15`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 14)] - 2026-11-13
 - **Commit SHA**: `0296857`
 - **Mục tiêu**:

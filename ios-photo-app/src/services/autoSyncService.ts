@@ -280,8 +280,8 @@ export async function runAutoSync(
 
     const isLimited = perm.status === "limited";
 
-    // 3. Lấy danh sách ảnh từ Camera Roll (Tối đa 60 ảnh mới nhất)
-    const res = await PhotoSync.getRecentPhotos({ limit: 60 });
+    // 3. Lấy danh sách ảnh từ Camera Roll (Tối đa 200 ảnh mới nhất)
+    const res = await PhotoSync.getRecentPhotos({ limit: 200 });
     const devicePhotos = res.photos || [];
 
     if (devicePhotos.length === 0) {
@@ -371,42 +371,70 @@ export async function runAutoSync(
       };
     }
 
-    // 6. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh mỗi lượt)
-    const batch = unsynced.slice(0, 12);
-    const remaining = unsynced.length - batch.length;
+    // 6. Xử lý liên tục toàn bộ các ảnh chưa sao lưu theo từng lô 10 ảnh (Memory-safe chunking)
+    const totalUnsynced = unsynced.length;
+    const allUploadedPhotos: PhotoItem[] = [];
+    const BATCH_SIZE = 10; // Giữ mức 10 ảnh/lô để tránh tràn RAM WebKit trên iOS
+    let overallProcessed = 0;
 
-    // ĐÁNH DẤU TRƯỚC các ID đang xử lý vào syncedIds để ngăn chặn các trigger khác đọc trùng
-    batch.forEach((item) => syncedIds.add(item.id));
-    saveSyncedDeviceIds(syncedIds);
+    for (let batchStart = 0; batchStart < unsynced.length; batchStart += BATCH_SIZE) {
+      const batch = unsynced.slice(batchStart, batchStart + BATCH_SIZE);
 
-    const filesToUpload: File[] = [];
-    const successfulIds: string[] = [];
+      // ĐÁNH DẤU TRƯỚC các ID đang xử lý vào syncedIds để ngăn chặn các trigger khác đọc trùng
+      batch.forEach((item) => syncedIds.add(item.id));
+      saveSyncedDeviceIds(syncedIds);
 
-    for (let i = 0; i < batch.length; i++) {
-      const item = batch[i];
-      if (onProgress) {
-        onProgress(i + 1, batch.length, item.filename || `photo_${i + 1}.jpg`);
-      }
+      const filesToUpload: File[] = [];
+      const successfulIds: string[] = [];
 
-      try {
-        const dataRes = await PhotoSync.getPhotoData({ id: item.id });
-        if (dataRes.base64) {
-          const file = base64ToFile(
-            dataRes.base64,
-            dataRes.filename || item.filename || `photo_${Date.now()}.jpg`
-          );
-          filesToUpload.push(file);
-          successfulIds.push(item.id);
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        const currentCount = overallProcessed + i + 1;
+        if (onProgress) {
+          onProgress(currentCount, totalUnsynced, item.filename || `photo_${currentCount}.jpg`);
         }
-      } catch (photoErr) {
-        console.warn(`Bỏ qua ảnh ${item.id} do lỗi đọc:`, photoErr);
-        // Trả lại ID để lần sau thử lại
-        syncedIds.delete(item.id);
+
+        try {
+          const dataRes = await PhotoSync.getPhotoData({ id: item.id });
+          if (dataRes.base64) {
+            const file = base64ToFile(
+              dataRes.base64,
+              dataRes.filename || item.filename || `photo_${Date.now()}_${i}.jpg`
+            );
+            filesToUpload.push(file);
+            successfulIds.push(item.id);
+          }
+        } catch (photoErr) {
+          console.warn(`Bỏ qua ảnh ${item.id} do lỗi đọc:`, photoErr);
+          // Trả lại ID để lần sau thử lại
+          syncedIds.delete(item.id);
+        }
       }
+
+      if (filesToUpload.length > 0) {
+        try {
+          const uploaded = await uploadPhotosToTelegram(config, filesToUpload, (prog) => {
+            if (onProgress) {
+              const currentUploadCount = overallProcessed + prog.current;
+              onProgress(currentUploadCount, totalUnsynced, prog.currentFileName);
+            }
+          });
+          allUploadedPhotos.push(...uploaded);
+        } catch (uploadErr) {
+          console.error("Lỗi khi tải lô ảnh lên Telegram:", uploadErr);
+          // Nếu upload cả lô thất bại, hoàn tác các ID của lô này để lần sau thử lại
+          successfulIds.forEach((id) => syncedIds.delete(id));
+          saveSyncedDeviceIds(syncedIds);
+          // Dừng vòng lặp an toàn, bảo toàn các ảnh đã tải thành công ở các lô trước
+          break;
+        }
+      }
+
+      overallProcessed += batch.length;
+      saveSyncedDeviceIds(syncedIds);
     }
 
-    if (filesToUpload.length === 0) {
-      saveSyncedDeviceIds(syncedIds);
+    if (allUploadedPhotos.length === 0) {
       return {
         success: true,
         syncedCount: 0,
@@ -415,31 +443,12 @@ export async function runAutoSync(
       };
     }
 
-    // 7. Upload lên Telegram Kênh "Kho ảnh đồng bộ Telegram"
-    let uploadedPhotos: PhotoItem[] = [];
-    try {
-      uploadedPhotos = await uploadPhotosToTelegram(config, filesToUpload, (prog) => {
-        if (onProgress) {
-          onProgress(prog.current, prog.total, prog.currentFileName);
-        }
-      });
-    } catch (uploadErr) {
-      // Nếu upload toàn bộ thất bại, hoàn tác các ID để thử lại lần sau
-      successfulIds.forEach((id) => syncedIds.delete(id));
-      saveSyncedDeviceIds(syncedIds);
-      throw uploadErr;
-    }
-
-    // Đảm bảo lưu chắc chắn danh sách ID đã hoàn thành
-    saveSyncedDeviceIds(syncedIds);
-
-    const extraMsg = remaining > 0 ? ` (Còn ${remaining} ảnh sẽ tiếp tục đồng bộ)` : "";
     return {
       success: true,
-      syncedCount: uploadedPhotos.length,
+      syncedCount: allUploadedPhotos.length,
       isLimited,
-      message: `Đã tự động sao lưu ${uploadedPhotos.length} ảnh mới từ iPhone lên Telegram!${extraMsg}`,
-      newUploadedPhotos: uploadedPhotos,
+      message: `Đã tự động sao lưu thành công ${allUploadedPhotos.length}/${totalUnsynced} ảnh từ iPhone lên Telegram! 🎉`,
+      newUploadedPhotos: allUploadedPhotos,
     };
   } catch (err: any) {
     console.error("Auto-sync error:", err);
