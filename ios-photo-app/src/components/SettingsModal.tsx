@@ -20,7 +20,6 @@ import {
   ChevronRight,
   ChevronDown,
   Wifi,
-  Sparkles,
 } from "lucide-react";
 import {
   requestTelegramCode,
@@ -379,11 +378,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center gap-2 text-xs text-neutral-400">
                       <Wifi className="w-4 h-4 text-blue-400 shrink-0" />
                       <span>Sao lưu tự động nền khi mở ứng dụng</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs text-neutral-400">
-                      <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <span>Live Activity & Dynamic Island trên Màn hình khóa</span>
                     </div>
 
                     {/* Hướng dẫn và phím tắt cấp quyền Thư viện ảnh trên iPhone */}
@@ -1088,7 +1082,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       isDarkMode ? "text-neutral-400" : "text-neutral-500"
                     }`}
                   >
-                    CloudPhotos v1.3 • Build 12
+                    CloudPhotos v1.3 • Build 13
                   </p>
                 </div>
               </div>
@@ -1140,7 +1134,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <span className="text-[11px] block text-neutral-500">Phiên bản:</span>
-                    <span className="font-semibold text-sm">v1.3 (Build 12)</span>
+                    <span className="font-semibold text-sm">v1.3 (Build 13)</span>
                   </div>
                   <div
                     className={`p-2.5 rounded-xl border ${
@@ -1169,7 +1163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 12 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 13 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

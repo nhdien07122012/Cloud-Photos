@@ -289,16 +289,6 @@ export async function runAutoSync(
     const batch = unsynced.slice(0, 12);
     const remaining = unsynced.length - batch.length;
 
-    // Khởi động iOS Live Activity & Dynamic Island để hiển thị tiến trình trên Màn hình khóa
-    try {
-      await PhotoSync.startLiveActivity({
-        total: batch.length,
-        initialFileName: batch[0]?.filename || "Đang quét ảnh...",
-      });
-    } catch (e) {
-      console.warn("Không thể kích hoạt Live Activity:", e);
-    }
-
     // ĐÁNH DẤU TRƯỚC các ID đang xử lý vào syncedIds để ngăn chặn các trigger khác đọc trùng
     batch.forEach((item) => syncedIds.add(item.id));
     saveSyncedDeviceIds(syncedIds);
@@ -309,16 +299,8 @@ export async function runAutoSync(
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
       if (onProgress) {
-        onProgress(i + 1, batch.length, `Đang chuẩn bị ảnh ${i + 1}/${batch.length}...`);
+        onProgress(i + 1, batch.length, item.filename || `photo_${i + 1}.jpg`);
       }
-      try {
-        PhotoSync.updateLiveActivity({
-          current: i + 1,
-          total: batch.length,
-          currentFileName: item.filename || `photo_${i + 1}.jpg`,
-          statusText: `Đang nén & chuẩn bị (${i + 1}/${batch.length})...`,
-        }).catch(() => {});
-      } catch {}
 
       try {
         const dataRes = await PhotoSync.getPhotoData({ id: item.id });
@@ -339,7 +321,6 @@ export async function runAutoSync(
 
     if (filesToUpload.length === 0) {
       saveSyncedDeviceIds(syncedIds);
-      PhotoSync.endLiveActivity({ finalMessage: "Không đọc được tệp ảnh" }).catch(() => {});
       return {
         success: true,
         syncedCount: 0,
@@ -355,28 +336,16 @@ export async function runAutoSync(
         if (onProgress) {
           onProgress(prog.current, prog.total, prog.currentFileName);
         }
-        PhotoSync.updateLiveActivity({
-          current: prog.current,
-          total: prog.total,
-          currentFileName: prog.currentFileName,
-          statusText: `Đang tải lên Telegram (${prog.current}/${prog.total})...`,
-        }).catch(() => {});
       });
     } catch (uploadErr) {
       // Nếu upload toàn bộ thất bại, hoàn tác các ID để thử lại lần sau
       successfulIds.forEach((id) => syncedIds.delete(id));
       saveSyncedDeviceIds(syncedIds);
-      PhotoSync.endLiveActivity({ finalMessage: "Lỗi tải ảnh lên Telegram" }).catch(() => {});
       throw uploadErr;
     }
 
     // Đảm bảo lưu chắc chắn danh sách ID đã hoàn thành
     saveSyncedDeviceIds(syncedIds);
-
-    // Báo hoàn tất cho Live Activity trên Màn hình khóa & Dynamic Island
-    PhotoSync.endLiveActivity({
-      finalMessage: `Đã sao lưu ${uploadedPhotos.length} ảnh lên Telegram`,
-    }).catch(() => {});
 
     const extraMsg = remaining > 0 ? ` (Còn ${remaining} ảnh sẽ tiếp tục đồng bộ)` : "";
     return {
@@ -388,7 +357,6 @@ export async function runAutoSync(
     };
   } catch (err: any) {
     console.error("Auto-sync error:", err);
-    PhotoSync.endLiveActivity({ finalMessage: "Lỗi đồng bộ: " + (err.message || "") }).catch(() => {});
     return {
       success: false,
       syncedCount: 0,

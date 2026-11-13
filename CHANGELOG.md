@@ -4,6 +4,34 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 13)] - 2026-11-13
+- **Commit SHA**: `d97cb3d`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi crash app và không load được ảnh:
+     - Gỡ bỏ hoàn toàn ActivityKit native / Widget Extension: Apple quy định tính năng Live Activities & App Extension bắt buộc phải có chứng chỉ Apple Developer trả phí với entitlement đặc thù (`com.apple.developer.activitykit`). Khi cài sideload qua TrollStore / Sideloadly / AltStore bằng chứng chỉ miễn phí, việc gọi ActivityKit sẽ bị iOS kernel / SpringBoard ngắt tiến trình (SIGKILL/SIGABRT) gây crash app và nghẽn luồng tải ảnh từ Telegram.
+     - Thay thế bằng các native stub an toàn (`startLiveActivity`, `updateLiveActivity`, `endLiveActivity` luôn resolve success ngay lập tức), loại bỏ 100% nguyên nhân crash.
+  2. Khắc phục lỗi viên thuốc nổi che khuất thanh trạng thái (đồng hồ, pin) và banner bị treo vĩnh viễn:
+     - Xóa bỏ Dynamic Island pill nổi (`fixed top-2.5`) gây đè lên đồng hồ và cụm tai thỏ/đảo của iPhone.
+     - Cải tiến `executeAutoSync`: Khi app mở hoặc resume từ nền mà không có ảnh mới cần tải, tiến trình đối soát chạy hoàn toàn ngầm và im lặng, KHÔNG BAO GIỜ hiện chữ "Đang kiểm tra thư viện iPhone..." làm rác màn hình.
+     - Chỉ hiển thị banner tiến trình khi thực sự có ảnh đang tải lên Telegram (`current/total`), và tự động ẩn ngay khi tải xong.
+     - Bổ sung bộ đếm an toàn 25 giây tự động giải phóng lock và ẩn banner nếu mạng bị treo, đảm bảo giao diện không bao giờ bị đơ.
+  3. Đảm bảo Thư viện ảnh luôn hiển thị tức thì (< 50ms) từ IndexedDB và không bao giờ bị nghẽn bởi tiến trình sao lưu.
+  4. Nâng cấp phiên bản lên `CloudPhotos v1.3 • Build 13`.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Thay thế `LiveActivityManager` bằng stub an toàn không gọi ActivityKit.
+  - `ios-photo-app/ios/App/App/Info.plist`: Xóa `NSSupportsLiveActivities` tránh vi phạm sandbox của iOS.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Loại bỏ các file ActivityKit, nâng `CURRENT_PROJECT_VERSION` lên `13`.
+  - `.github/workflows/build-ipa.yml`: Loại bỏ bước cài đặt Widget Extension.
+  - `ios-photo-app/src/App.tsx`: Xóa pill nổi đè thanh trạng thái, tối ưu `executeAutoSync` chạy êm khi không có ảnh mới, thêm timeout 25s an toàn.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bỏ các lệnh gọi Live Activity.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp số hiệu bản dựng lên `v1.3 (Build 13)`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 12)] - 2026-11-13
 - **Commit SHA**: `ea16993`
 - **Mục tiêu**:

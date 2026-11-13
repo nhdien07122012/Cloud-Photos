@@ -96,12 +96,22 @@ export const App: React.FC = () => {
       return;
     }
     isSyncingRef.current = true;
-    setIsAutoSyncing(true);
-    setAutoSyncStatusText("Đang kiểm tra thư viện iPhone...");
+    if (notify) {
+      showToast("Đang quét thư viện ảnh...");
+    }
+
+    // Bộ đếm an toàn 25 giây tự động giải phóng lock và ẩn banner nếu mạng bị treo
+    const safetyTimeout = setTimeout(() => {
+      isSyncingRef.current = false;
+      setIsAutoSyncing(false);
+      setAutoSyncStatusText("");
+    }, 25000);
+
     try {
       const res = await runAutoSync(
         config,
         (current, total, file) => {
+          setIsAutoSyncing(true);
           setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
         },
         photos // Đối soát với danh sách ảnh đang có trên Telegram
@@ -124,6 +134,7 @@ export const App: React.FC = () => {
       console.error("Auto sync trigger error:", e);
       if (notify) showToast("Lỗi đồng bộ tự động: " + (e.message || ""));
     } finally {
+      clearTimeout(safetyTimeout);
       isSyncingRef.current = false;
       setIsAutoSyncing(false);
       setAutoSyncStatusText("");
@@ -790,31 +801,6 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Dynamic Island Capsule hiển thị tiến trình Live Activity chuẩn Apple */}
-        {isAutoSyncing && (
-          <div className="fixed top-2.5 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm pointer-events-auto animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="bg-black/95 backdrop-blur-2xl border border-white/20 text-white shadow-2xl rounded-full px-4 py-2.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-cyan-500/20 flex items-center justify-center shrink-0">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold text-white flex items-center gap-1.5 leading-none">
-                    <span>CloudPhotos Sao lưu ngầm</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  </div>
-                  <div className="text-[10px] text-neutral-300 truncate mt-1 leading-none font-medium">
-                    {autoSyncStatusText || "Đang đồng bộ ảnh mới lên Telegram..."}
-                  </div>
-                </div>
-              </div>
-              <div className="shrink-0 px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-[10px] font-extrabold text-cyan-300 border border-cyan-400/40">
-                LIVE
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Thông báo lỗi nếu có */}
         {errorMessage && (
           <div
@@ -841,10 +827,10 @@ export const App: React.FC = () => {
         {currentTab === "library" && (
           <>
             {/* Banner tiến trình tự động sao lưu ảnh nền */}
-            {isAutoSyncing && (
-              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 animate-pulse">
+            {isAutoSyncing && autoSyncStatusText && (
+              <div className="mx-5 mb-3 px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
                 <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-500" />
-                <span className="truncate">{autoSyncStatusText || "Đang tự động sao lưu ảnh mới từ iPhone lên Telegram..."}</span>
+                <span className="truncate">{autoSyncStatusText}</span>
               </div>
             )}
 

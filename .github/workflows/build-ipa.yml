@@ -48,11 +48,6 @@ jobs:
             }
           '
 
-      - name: Setup Live Activity Widget Extension in Xcode
-        run: |
-          gem install xcodeproj --no-document
-          ruby ios-photo-app/ios/setup_widget.rb
-
       - name: Build iOS App with Xcode
         run: |
           cd ios-photo-app/ios/App
