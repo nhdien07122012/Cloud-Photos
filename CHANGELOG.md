@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 18)] - 2026-11-14
-- **Commit SHA**: Pending CI/CD
+- **Commit SHA**: `45f0147`
 - **Mục tiêu**:
   1. Khắc phục triệt để lỗi ảnh không load được (biểu tượng chấm hỏi màu xanh `[?]`):
      - **Nguyên nhân gốc rễ**: Khi đọc tin nhắn tải lên dạng file qua GramJS, cờ `{ thumb: 2 }` vượt quá số lượng thumbnail thực tế của tài liệu/ảnh, khiến GramJS trả về `Buffer.alloc(0)` (buffer 0 bytes). Buffer rỗng này bị lưu vào IndexedDB và tạo ra `Blob URL` 0 bytes, khiến WebKit Safari trên iPhone không thể giải mã và hiển thị ô xám kèm icon `[?]`.
