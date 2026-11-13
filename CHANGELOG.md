@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 17)] - 2026-11-14
-- **Commit SHA**: Pending CI/CD
+- **Commit SHA**: `80a8944`
 - **Mục tiêu**:
   1. Tái thiết kế toàn diện giao diện phần "Kỷ niệm" (Dành Cho Bạn - Memories / For You):
      - Thay thế thẻ đơn điệu cũ bằng giao diện điện ảnh chuẩn Apple iOS 18 / VisionOS phong phú và cảm xúc.
