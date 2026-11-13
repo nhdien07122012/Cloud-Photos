@@ -123,7 +123,10 @@ export async function getCachedMessageIds(): Promise<Set<number>> {
  * Lưu 1 ảnh vào IndexedDB
  */
 export async function savePhotoToCache(
-  item: Omit<StoredPhotoRecord, "thumbnailData"> & { thumbnailData: ArrayBuffer | Uint8Array }
+  item: Omit<StoredPhotoRecord, "thumbnailData" | "hdData"> & {
+    thumbnailData: ArrayBuffer | Uint8Array;
+    hdData?: ArrayBuffer | Uint8Array;
+  }
 ): Promise<void> {
   try {
     const db = await openDatabase();
@@ -139,9 +142,21 @@ export async function savePhotoToCache(
             item.thumbnailData.byteOffset + item.thumbnailData.byteLength
           );
 
+    let cleanHdData: ArrayBuffer | undefined = undefined;
+    if (item.hdData) {
+      cleanHdData =
+        item.hdData instanceof ArrayBuffer
+          ? item.hdData
+          : (item.hdData.buffer.slice(
+              item.hdData.byteOffset,
+              item.hdData.byteOffset + item.hdData.byteLength
+            ) as ArrayBuffer);
+    }
+
     const record: StoredPhotoRecord = {
       ...item,
       thumbnailData: buffer as ArrayBuffer,
+      hdData: cleanHdData,
     };
 
     store.put(record);

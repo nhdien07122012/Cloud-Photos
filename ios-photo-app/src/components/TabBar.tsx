@@ -6,6 +6,7 @@ interface TabBarProps {
   onTabChange: (tab: string) => void;
   onOpenSettings: () => void;
   onOpenAddPhoto: () => void;
+  isDarkMode?: boolean;
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -13,6 +14,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onTabChange,
   onOpenSettings,
   onOpenAddPhoto,
+  isDarkMode = true,
 }) => {
   const tabs = [
     { id: "library", label: "Thư viện", icon: LayoutGrid },
@@ -36,7 +38,11 @@ export const TabBar: React.FC<TabBarProps> = ({
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
         }}
-        className="pointer-events-auto flex items-center bg-[#18181c]/75 border border-white/10 rounded-full p-1 shadow-2xl shadow-black/80 min-h-[56px]"
+        className={`pointer-events-auto flex items-center rounded-full p-1 min-h-[56px] transition-colors duration-200 ${
+          isDarkMode
+            ? "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80"
+            : "bg-white/85 border border-black/10 shadow-xl shadow-black/10"
+        }`}
       >
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -56,18 +62,30 @@ export const TabBar: React.FC<TabBarProps> = ({
               onClick={handleClick}
               className={`flex flex-col items-center justify-center px-3.5 py-1.5 min-w-[64px] rounded-full transition-all duration-200 active:scale-95 ${
                 isActive
-                  ? "bg-[#2c2c2e]/90 border border-white/15 text-[#ff375f] shadow-sm"
-                  : "text-white hover:text-neutral-200 active:opacity-70"
+                  ? isDarkMode
+                    ? "bg-[#2c2c2e]/90 border border-white/15 text-[#ff375f] shadow-sm"
+                    : "bg-neutral-200/90 border border-black/10 text-[#ff375f] shadow-sm"
+                  : isDarkMode
+                  ? "text-white hover:text-neutral-200 active:opacity-70"
+                  : "text-neutral-700 hover:text-black active:opacity-70"
               }`}
             >
               <Icon
                 className={`w-5 h-5 mb-0.5 transition-transform duration-200 ${
-                  isActive ? "text-[#ff375f] stroke-[2.4]" : "text-white stroke-[2]"
+                  isActive
+                    ? "text-[#ff375f] stroke-[2.4]"
+                    : isDarkMode
+                    ? "text-white stroke-[2]"
+                    : "text-neutral-700 stroke-[2]"
                 }`}
               />
               <span
                 className={`text-[11px] tracking-tight leading-tight ${
-                  isActive ? "font-bold text-[#ff375f]" : "font-semibold text-white"
+                  isActive
+                    ? "font-bold text-[#ff375f]"
+                    : isDarkMode
+                    ? "font-semibold text-white"
+                    : "font-semibold text-neutral-800"
                 }`}
               >
                 {tab.label}
@@ -79,15 +97,19 @@ export const TabBar: React.FC<TabBarProps> = ({
 
       {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) đồng bộ style và thẳng hàng */}
       <div className="flex flex-col items-center gap-2 pointer-events-none">
-        {/* Nút Thêm link Instagram (+) style kính tối màu chuẩn iOS */}
+        {/* Nút Thêm ảnh (+) style kính chuẩn iOS */}
         <button
           onClick={onOpenAddPhoto}
           style={{
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
           }}
-          className="pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center bg-[#18181c]/75 border border-white/10 shadow-2xl shadow-black/80 transition-all duration-200 active:scale-95 shrink-0 text-white hover:text-neutral-200"
-          title="Tải ảnh mới từ Instagram"
+          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 ${
+            isDarkMode
+              ? "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80 text-white hover:text-neutral-200"
+              : "bg-white/85 border border-black/10 shadow-xl shadow-black/10 text-neutral-800 hover:text-black"
+          }`}
+          title="Tải ảnh mới lên Telegram"
         >
           <Plus className="w-6 h-6 stroke-[2.4]" />
         </button>
@@ -99,10 +121,14 @@ export const TabBar: React.FC<TabBarProps> = ({
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
           }}
-          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center bg-[#18181c]/75 border border-white/10 shadow-2xl shadow-black/80 transition-all duration-200 active:scale-95 shrink-0 ${
-            isSearchActive
-              ? "bg-[#2c2c2e]/90 border-[#ff375f]/50 text-[#ff375f]"
-              : "text-white hover:text-neutral-200"
+          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 ${
+            isDarkMode
+              ? isSearchActive
+                ? "bg-[#2c2c2e]/90 border border-[#ff375f]/50 text-[#ff375f] shadow-2xl shadow-black/80"
+                : "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80 text-white hover:text-neutral-200"
+              : isSearchActive
+              ? "bg-neutral-200/90 border border-[#ff375f]/50 text-[#ff375f] shadow-xl shadow-black/10"
+              : "bg-white/85 border border-black/10 shadow-xl shadow-black/10 text-neutral-800 hover:text-black"
           }`}
           title="Tìm kiếm"
         >
@@ -110,7 +136,9 @@ export const TabBar: React.FC<TabBarProps> = ({
             className={`w-6 h-6 transition-transform duration-200 ${
               isSearchActive
                 ? "text-[#ff375f] stroke-[2.8]"
-                : "text-white stroke-[2.4]"
+                : isDarkMode
+                ? "text-white stroke-[2.4]"
+                : "text-neutral-700 stroke-[2.4]"
             }`}
           />
         </button>

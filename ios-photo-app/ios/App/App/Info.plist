@@ -22,8 +22,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CloudPhotos cần quyền truy cập Camera để chụp ảnh và quay video sao lưu lên Telegram.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CloudPhotos cần quyền truy cập Microphone khi quay video để sao lưu lên Telegram.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CloudPhotos cần quyền truy cập Thư viện ảnh để sao lưu ảnh an toàn lên Telegram.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>CloudPhotos cần quyền lưu ảnh chất lượng cao từ Telegram về Thư viện ảnh của bạn.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -106,10 +112,6 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Cần quyền truy cập Thư viện ảnh để xem và lưu ảnh về máy.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Cần quyền để lưu ảnh chất lượng cao từ Telegram về thư viện ảnh.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

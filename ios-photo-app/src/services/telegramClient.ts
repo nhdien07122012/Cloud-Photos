@@ -13,7 +13,7 @@ const CONFIG_STORAGE_KEY = "cloud_photos_tg_config";
 export const DEFAULT_CONFIG: TelegramConfig = {
   apiId: localStorage.getItem("tg_api_id") || "",
   apiHash: localStorage.getItem("tg_api_hash") || "",
-  botToken: "9259768287:AAHtvb_axOPOWrbHznw1tdok92gHjLqxY-U",
+  botToken: localStorage.getItem("tg_bot_token") || "",
   channelId: localStorage.getItem("cloud_photos_channel_id") || "",
   phoneNumber: localStorage.getItem("tg_phone") || "",
   sessionString: localStorage.getItem("tg_session") || "",

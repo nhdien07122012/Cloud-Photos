@@ -40,3 +40,5 @@ export interface TelegramConfig {
   sessionString?: string;
   isLoggedIn?: boolean;
 }
+
+export type ThemeMode = "dark" | "light" | "system";

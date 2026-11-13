@@ -2,9 +2,10 @@
  * uploadService.ts - Dịch vụ chọn ảnh từ máy iPhone và upload lên Kênh Telegram
  */
 
-import { initTelegramClient } from "./telegramClient";
+import { initTelegramClient, autoDetectChannel, saveStoredConfig } from "./telegramClient";
 import { savePhotoToCache } from "./photoStorage";
 import type { TelegramConfig, PhotoItem } from "../types";
+import { Buffer } from "buffer";
 
 export interface UploadProgress {
   total: number;
@@ -78,19 +79,57 @@ export async function uploadPhotosToTelegram(
   onProgress?: (p: UploadProgress) => void
 ): Promise<PhotoItem[]> {
   const client = await initTelegramClient(config);
-  let targetPeer: any = config.channelId;
-  try {
-    targetPeer = await client.getEntity(config.channelId);
-  } catch {
-    try {
-      targetPeer = await client.getEntity(BigInt(config.channelId));
-    } catch {
-      targetPeer = config.channelId;
+
+  // 1. Tự động tìm Channel ID nếu chưa có
+  let channelId = config.channelId;
+  if (!channelId) {
+    const detected = await autoDetectChannel(config);
+    if (detected) {
+      channelId = detected.id;
+      config.channelId = detected.id;
+      saveStoredConfig(config);
     }
   }
 
+  if (!channelId) {
+    throw new Error(
+      "Không tìm thấy Kênh lưu trữ. Vui lòng vào Cài đặt để kết nối kênh hoặc tạo kênh 'Kho ảnh đồng bộ Telegram'!"
+    );
+  }
+
+  // 2. Tìm entity peer chính xác bằng getDialogs hoặc getEntity
+  let targetPeer: any = null;
+  try {
+    const dialogs: any = await client.getDialogs({ limit: 100 });
+    const found = dialogs.find(
+      (d: any) =>
+        d.id?.toString() === channelId ||
+        d.entity?.id?.toString() === channelId ||
+        (d.title || d.name || "").toLowerCase().includes("kho ảnh đồng bộ")
+    );
+    if (found && found.entity) {
+      targetPeer = found.entity;
+    }
+  } catch (e) {
+    console.warn("Không thể quét getDialogs khi chuẩn bị upload:", e);
+  }
+
+  if (!targetPeer) {
+    try {
+      targetPeer = await client.getEntity(channelId);
+    } catch {
+      try {
+        targetPeer = await client.getEntity(BigInt(channelId));
+      } catch {
+        targetPeer = channelId;
+      }
+    }
+  }
+
+  const { CustomFile } = await import("telegram/client/uploads");
   const uploadedPhotos: PhotoItem[] = [];
   const total = files.length;
+  let lastError: Error | null = null;
 
   for (let i = 0; i < total; i++) {
     const file = files[i];
@@ -104,7 +143,7 @@ export async function uploadPhotosToTelegram(
     }
 
     try {
-      // 1. Tạo thumbnail nhanh
+      // 1. Tạo thumbnail nhanh cho hiển thị cục bộ
       const thumbBuffer = await createThumbnail(file);
 
       // 2. Lấy thời gian chụp/chỉnh sửa thực tế của file ảnh
@@ -112,24 +151,31 @@ export async function uploadPhotosToTelegram(
       const captionText = `📷 ${file.name}\n📅 ${fileDate.toLocaleDateString("vi-VN")}`;
 
       // 3. Upload file lên Kênh Telegram qua MTProto
-      // Chuyển File sang CustomFile cho GramJS
-      const buffer = await file.arrayBuffer();
-      const uint8 = new Uint8Array(buffer);
-      
-      // Upload trực tiếp
+      // Đọc arrayBuffer và bọc vào CustomFile có Buffer hợp lệ của GramJS
+      const rawBuffer = await file.arrayBuffer();
+      const nodeBuffer = Buffer.from(rawBuffer);
+      const customFile = new CustomFile(
+        file.name,
+        file.size || rawBuffer.byteLength,
+        "",
+        nodeBuffer
+      );
+
+      // Upload trực tiếp với workers: 1 đảm bảo độ ổn định cao trên iPhone
       const sentMessage: any = await client.sendFile(targetPeer, {
-        file: uint8,
+        file: customFile,
         caption: captionText,
-        workers: 2,
+        workers: 1,
       });
 
       const messageId = sentMessage?.id || Date.now();
 
-      // 4. Lưu ngay vào IndexedDB cục bộ của máy
+      // 4. Lưu ngay thumbnail và ảnh gốc vào IndexedDB cục bộ của máy
       await savePhotoToCache({
         messageId,
         id: `tg-${messageId}`,
         thumbnailData: thumbBuffer,
+        hdData: rawBuffer,
         caption: file.name,
         timestamp: fileDate.getTime(),
         isCarousel: false,
@@ -147,9 +193,14 @@ export async function uploadPhotosToTelegram(
         date: fileDate,
         isCarousel: false,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Lỗi upload file ${file.name}:`, err);
+      lastError = err;
     }
+  }
+
+  if (uploadedPhotos.length === 0 && lastError) {
+    throw lastError;
   }
 
   return uploadedPhotos;
