@@ -4,6 +4,29 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 7)] - 2026-11-13
+- **Commit SHA**: `b34e76d`
+- **Mục tiêu**:
+  1. Nâng cấp PhotoKit Native Plugin yêu cầu quyền truy cập đầy đủ (`PHAccessLevel.readWrite`) cho Thư viện ảnh iPhone để tự động sao lưu toàn bộ máy giống Google Photos; bổ sung nút Mở trực tiếp Cài đặt iPhone và nút Chọn thêm ảnh trong phần Cài đặt của ứng dụng.
+  2. Khắc phục triệt để lỗi thẻ Album bị mất ảnh nền / hiện icon chấm hỏi [ ? ] (tự động lấy ảnh đầu tiên trong album có URL hợp lệ của phiên làm việc hiện tại làm ảnh nền bìa, tự động dọn dẹp các link blob: cũ bị hết hạn giữa các session).
+  3. Khóa cứng kích thước đồng bộ 56px (`w-[56px] h-[56px]` và `h-[56px]` kèm `shrink-0`) giữa nút Tìm kiếm, nút Thêm và viên nang TabBar, đảm bảo không bị co bóp hay lệch kích cỡ trên mọi kích cỡ màn hình iPhone.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Nâng cấp `PhotoSyncPlugin` sử dụng `PHPhotoLibrary.requestAuthorization(for: .readWrite)` chuẩn iOS 14+, bổ sung phương thức `openSettings` mở trực tiếp trang cấp quyền của CloudPhotos trên iPhone và `presentLimitedPicker` cho phép chọn thêm ảnh khi ở chế độ Limited.
+  - `ios-photo-app/ios/App/App/Info.plist`: Cập nhật mô tả `NSPhotoLibraryUsageDescription` xin quyền truy cập toàn bộ thư viện ảnh để tự động sao lưu nền giống Google Photos.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Mở rộng interface quyền (`status`, `isFullAccess`, `openNativeSettings`, `presentLimitedLibraryPicker`), kiểm tra chi tiết trạng thái Limited và hướng dẫn người dùng chuyển sang "Tất cả ảnh".
+  - `ios-photo-app/src/services/albumStorage.ts`: Bổ sung hàm `getAlbumCoverUrl` tự động lấy ảnh đầu tiên trong album làm ảnh nền bìa, tự động lọc và xóa các chuỗi blob URL cũ đã hết hạn.
+  - `ios-photo-app/src/types/index.ts`: Thêm `coverPhotoId?: string | number` vào `UserAlbum`.
+  - `ios-photo-app/src/App.tsx`: Cập nhật hiển thị thẻ Album sử dụng `getAlbumCoverUrl` và bổ sung `onError` fallback an toàn.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Thêm bảng hướng dẫn cấp quyền và 2 nút thao tác nhanh: **[Mở Cài đặt iPhone]** (chọn Tất cả ảnh) và **[Chọn thêm ảnh]**.
+  - `ios-photo-app/src/components/TabBar.tsx`: Thêm `shrink-0` cố định cho cả viên nang TabBar và cụm nút Thêm/Tìm kiếm 56px.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `7`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 6)] - 2026-11-13
 - **Commit SHA**: `a277739`
 - **Mục tiêu**:

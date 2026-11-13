@@ -22,6 +22,7 @@ import {
   removePhotoFromAlbum,
   deleteAlbum,
   getPhotosInAlbum,
+  getAlbumCoverUrl,
 } from "./services/albumStorage";
 import { Header } from "./components/Header";
 import { PhotoGrid } from "./components/PhotoGrid";
@@ -1035,11 +1036,7 @@ export const App: React.FC = () => {
                 {userAlbums.length > 0 && (
                   <div className="grid grid-cols-2 gap-3.5 mb-6">
                     {userAlbums.map((album) => {
-                      const albumItems = getPhotosInAlbum(album, photos);
-                      const cover =
-                        album.coverPhotoUrl ||
-                        albumItems[0]?.thumbnailUrl ||
-                        albumItems[0]?.url;
+                      const cover = getAlbumCoverUrl(album, photos);
 
                       return (
                         <div
@@ -1056,6 +1053,10 @@ export const App: React.FC = () => {
                               <img
                                 src={cover}
                                 alt=""
+                                onError={(e) => {
+                                  // Nếu URL ảnh lỗi, ẩn thẻ img để hiển thị icon thư mục dự phòng
+                                  (e.target as HTMLElement).style.display = "none";
+                                }}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               />
                             ) : (

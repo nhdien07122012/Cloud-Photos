@@ -46,7 +46,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 /**
  * PhotoSyncPlugin - Tự động đồng bộ và đọc ảnh từ Thư viện ảnh iPhone (Camera Roll)
- * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram
+ * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram với quyền ReadWrite đầy đủ
  */
 @objc(PhotoSyncPlugin)
 public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -55,26 +55,112 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "checkPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "presentLimitedPicker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getRecentPhotos", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPhotoData", returnType: CAPPluginReturnPromise)
     ]
 
     @objc func checkPermission(_ call: CAPPluginCall) {
-        let status = PHPhotoLibrary.authorizationStatus()
-        let granted = (status == .authorized || status == .limited)
-        call.resolve(["granted": granted])
+        let status: PHAuthorizationStatus
+        if #available(iOS 14, *) {
+            status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        } else {
+            status = PHPhotoLibrary.authorizationStatus()
+        }
+
+        var statusString = "notDetermined"
+        switch status {
+        case .authorized:
+            statusString = "authorized"
+        case .limited:
+            statusString = "limited"
+        case .denied:
+            statusString = "denied"
+        case .restricted:
+            statusString = "restricted"
+        case .notDetermined:
+            statusString = "notDetermined"
+        @unknown default:
+            statusString = "unknown"
+        }
+
+        call.resolve([
+            "status": statusString,
+            "granted": (status == .authorized || status == .limited),
+            "isFullAccess": (status == .authorized)
+        ])
     }
 
     @objc func requestPermission(_ call: CAPPluginCall) {
-        PHPhotoLibrary.requestAuthorization { status in
-            let granted = (status == .authorized || status == .limited)
-            call.resolve(["granted": granted])
+        let handler: (PHAuthorizationStatus) -> Void = { status in
+            var statusString = "notDetermined"
+            switch status {
+            case .authorized:
+                statusString = "authorized"
+            case .limited:
+                statusString = "limited"
+            case .denied:
+                statusString = "denied"
+            case .restricted:
+                statusString = "restricted"
+            case .notDetermined:
+                statusString = "notDetermined"
+            @unknown default:
+                statusString = "unknown"
+            }
+
+            call.resolve([
+                "status": statusString,
+                "granted": (status == .authorized || status == .limited),
+                "isFullAccess": (status == .authorized)
+            ])
+        }
+
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: handler)
+        } else {
+            PHPhotoLibrary.requestAuthorization(handler)
+        }
+    }
+
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else {
+                call.reject("Không thể mở Cài đặt")
+                return
+            }
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url, options: [:]) { success in
+                    call.resolve(["success": success])
+                }
+            } else {
+                call.reject("Không thể mở Cài đặt iOS")
+            }
+        }
+    }
+
+    @objc func presentLimitedPicker(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if #available(iOS 14, *) {
+                if let rootVC = self.bridge?.viewController {
+                    PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: rootVC)
+                    call.resolve(["success": true])
+                    return
+                }
+            }
+            call.reject("Chức năng chỉ khả dụng trên iOS 14+")
         }
     }
 
     @objc func getRecentPhotos(_ call: CAPPluginCall) {
-        let limit = call.getInt("limit") ?? 30
-        let status = PHPhotoLibrary.authorizationStatus()
+        let limit = call.getInt("limit") ?? 50
+        let status: PHAuthorizationStatus
+        if #available(iOS 14, *) {
+            status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        } else {
+            status = PHPhotoLibrary.authorizationStatus()
+        }
         guard status == .authorized || status == .limited else {
             call.reject("Chưa được cấp quyền truy cập Thư viện ảnh")
             return
@@ -95,7 +181,10 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
                 "height": asset.pixelHeight
             ])
         }
-        call.resolve(["photos": result])
+        call.resolve([
+            "photos": result,
+            "status": (status == .authorized ? "authorized" : "limited")
+        ])
     }
 
     @objc func getPhotoData(_ call: CAPPluginCall) {

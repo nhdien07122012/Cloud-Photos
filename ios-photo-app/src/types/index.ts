@@ -36,6 +36,7 @@ export interface UserAlbum {
   title: string;
   createdAt: number;
   coverPhotoUrl?: string;
+  coverPhotoId?: string | number;
   photoIds: (string | number)[];
 }
 

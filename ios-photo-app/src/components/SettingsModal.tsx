@@ -20,7 +20,6 @@ import {
   ChevronRight,
   ChevronDown,
   Wifi,
-  Zap,
 } from "lucide-react";
 import {
   requestTelegramCode,
@@ -28,6 +27,7 @@ import {
   logoutTelegram,
 } from "../services/telegramClient";
 import { getCacheStats, clearPhotoCache } from "../services/photoStorage";
+import { openNativeSettings, presentLimitedLibraryPicker } from "../services/autoSyncService";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -328,12 +328,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {autoSync && (
                   <div className="space-y-2.5 pt-2 border-t border-neutral-800/40">
                     <div className="flex items-center gap-2 text-xs text-neutral-400">
-                      <Wifi className="w-4 h-4 text-blue-400" />
-                      <span>Chế độ: Sao lưu thông minh qua Wi-Fi & Mạng di động</span>
+                      <Wifi className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span>Sao lưu tự động nền khi mở ứng dụng</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-neutral-400">
-                      <Zap className="w-4 h-4 text-amber-400" />
-                      <span>Trạng thái: Sẵn sàng quét ảnh mới khi mở ứng dụng</span>
+
+                    {/* Hướng dẫn và phím tắt cấp quyền Thư viện ảnh trên iPhone */}
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-2 text-xs">
+                      <div className="flex items-center gap-2 font-bold text-amber-400">
+                        <ShieldCheck className="w-4 h-4 shrink-0" />
+                        <span>Quyền truy cập Ảnh trên iPhone:</span>
+                      </div>
+                      <p className={`text-[11px] leading-relaxed ${isDarkMode ? "text-neutral-300" : "text-neutral-600"}`}>
+                        Để tự động sao lưu tất cả ảnh trong máy (Google Photos style), bạn cần chọn <strong>"Tất cả ảnh"</strong> trong Cài đặt iPhone.
+                      </p>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => openNativeSettings()}
+                          className="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] flex items-center justify-center gap-1 active:scale-95 transition-transform shadow"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Mở Cài đặt iPhone
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => presentLimitedLibraryPicker()}
+                          className={`py-1.5 px-2.5 font-semibold rounded-lg text-[11px] flex items-center justify-center gap-1 active:scale-95 transition-transform ${
+                            isDarkMode ? "bg-neutral-800 hover:bg-neutral-700 text-neutral-200" : "bg-neutral-200 hover:bg-neutral-300 text-neutral-800"
+                          }`}
+                        >
+                          Chọn thêm ảnh
+                        </button>
+                      </div>
                     </div>
 
                     {onTriggerSyncNow && (
@@ -879,7 +905,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       isDarkMode ? "text-neutral-400" : "text-neutral-500"
                     }`}
                   >
-                    CloudPhotos v1.3 • Build 6
+                    CloudPhotos v1.3 • Build 7
                   </p>
                 </div>
               </div>
@@ -960,7 +986,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 6 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 7 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

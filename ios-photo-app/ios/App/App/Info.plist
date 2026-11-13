@@ -27,7 +27,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>CloudPhotos cần quyền truy cập Microphone khi quay video để sao lưu lên Telegram.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>CloudPhotos cần quyền truy cập Thư viện ảnh để sao lưu ảnh an toàn lên Telegram.</string>
+	<string>CloudPhotos cần quyền truy cập toàn bộ Thư viện ảnh để tự động sao lưu ảnh nền lên Telegram giống Google Photos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>CloudPhotos cần quyền lưu ảnh chất lượng cao từ Telegram về Thư viện ảnh của bạn.</string>
 	<key>CFBundleURLTypes</key>

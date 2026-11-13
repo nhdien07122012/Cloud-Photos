@@ -9,10 +9,20 @@ export interface NativePhoto {
   height: number;
 }
 
+export type PhotoPermissionStatus = "authorized" | "limited" | "denied" | "restricted" | "notDetermined" | "unknown";
+
+export interface PermissionResult {
+  status: PhotoPermissionStatus;
+  granted: boolean;
+  isFullAccess: boolean;
+}
+
 export interface PhotoSyncPluginInterface {
-  checkPermission(): Promise<{ granted: boolean }>;
-  requestPermission(): Promise<{ granted: boolean }>;
-  getRecentPhotos(options?: { limit?: number }): Promise<{ photos: NativePhoto[] }>;
+  checkPermission(): Promise<PermissionResult>;
+  requestPermission(): Promise<PermissionResult>;
+  openSettings(): Promise<{ success: boolean }>;
+  presentLimitedPicker(): Promise<{ success: boolean }>;
+  getRecentPhotos(options?: { limit?: number }): Promise<{ photos: NativePhoto[]; status?: string }>;
   getPhotoData(options: { id: string }): Promise<{ base64: string; filename: string; size: number }>;
 }
 
@@ -37,6 +47,28 @@ export function saveSyncedDeviceIds(set: Set<string>): void {
   }
 }
 
+// Mở trực tiếp màn hình Cài đặt của ứng dụng trên iPhone
+export async function openNativeSettings(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await PhotoSync.openSettings();
+    return !!res.success;
+  } catch {
+    return false;
+  }
+}
+
+// Mở giao diện chọn thêm ảnh khi đang ở quyền Limited (Truy cập riêng tư)
+export async function presentLimitedLibraryPicker(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const res = await PhotoSync.presentLimitedPicker();
+    return !!res.success;
+  } catch {
+    return false;
+  }
+}
+
 // Chuyển Base64 sang File object để upload lên Telegram
 function base64ToFile(base64: string, filename: string): File {
   const byteChars = atob(base64);
@@ -53,6 +85,7 @@ export interface AutoSyncResult {
   success: boolean;
   syncedCount: number;
   message: string;
+  isLimited?: boolean;
   newUploadedPhotos?: PhotoItem[];
 }
 
@@ -79,23 +112,36 @@ export async function runAutoSync(
   }
 
   try {
-    // 1. Kiểm tra quyền truy cập Photo Library
-    const perm = await PhotoSync.checkPermission();
-    if (!perm.granted) {
-      const req = await PhotoSync.requestPermission();
-      if (!req.granted) {
-        return {
-          success: false,
-          syncedCount: 0,
-          message: "Quyền truy cập Thư viện ảnh chưa được cấp trong Cài đặt iPhone.",
-        };
-      }
+    // 1. Kiểm tra và yêu cầu quyền truy cập Photo Library với ReadWrite đầy đủ
+    let perm = await PhotoSync.checkPermission();
+    if (!perm.granted || perm.status === "notDetermined") {
+      perm = await PhotoSync.requestPermission();
     }
 
-    // 2. Lấy danh sách ảnh gần đây từ Camera Roll (30 ảnh mới nhất)
-    const res = await PhotoSync.getRecentPhotos({ limit: 30 });
+    if (!perm.granted) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message: "Chưa được cấp quyền truy cập Thư viện ảnh. Vui lòng mở Cài đặt iPhone để bật.",
+      };
+    }
+
+    const isLimited = perm.status === "limited";
+
+    // 2. Lấy danh sách ảnh từ Camera Roll (50 ảnh mới nhất)
+    const res = await PhotoSync.getRecentPhotos({ limit: 50 });
     const devicePhotos = res.photos || [];
+
     if (devicePhotos.length === 0) {
+      if (isLimited) {
+        return {
+          success: true,
+          syncedCount: 0,
+          isLimited: true,
+          message:
+            "Ứng dụng đang ở chế độ 'Truy cập riêng tư'. Vui lòng mở Cài đặt iPhone và chọn 'Tất cả ảnh' để sao lưu tự động.",
+        };
+      }
       return {
         success: true,
         syncedCount: 0,
@@ -111,14 +157,17 @@ export async function runAutoSync(
       return {
         success: true,
         syncedCount: 0,
-        message: "Toàn bộ ảnh trên iPhone đã được sao lưu đầy đủ lên Telegram!",
+        isLimited,
+        message: isLimited
+          ? "Đã sao lưu hết các ảnh được chọn! (Để sao lưu toàn bộ máy, hãy chọn 'Tất cả ảnh' trong Cài đặt iPhone)"
+          : "Toàn bộ ảnh trên iPhone đã được sao lưu đầy đủ lên Telegram!",
       };
     }
 
-    // 4. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 10 ảnh)
+    // 4. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh)
     const filesToUpload: File[] = [];
     const idsToMark: string[] = [];
-    const batch = unsynced.slice(0, 10);
+    const batch = unsynced.slice(0, 12);
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
@@ -137,6 +186,7 @@ export async function runAutoSync(
       return {
         success: true,
         syncedCount: 0,
+        isLimited,
         message: "Không đọc được tệp ảnh từ iPhone.",
       };
     }
@@ -155,6 +205,7 @@ export async function runAutoSync(
     return {
       success: true,
       syncedCount: uploadedPhotos.length,
+      isLimited,
       message: `Đã tự động sao lưu ${uploadedPhotos.length} ảnh mới từ iPhone lên Telegram!`,
       newUploadedPhotos: uploadedPhotos,
     };

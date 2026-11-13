@@ -38,7 +38,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           backdropFilter: "blur(28px)",
           WebkitBackdropFilter: "blur(28px)",
         }}
-        className={`pointer-events-auto h-[56px] flex items-center gap-1.5 rounded-full px-2 transition-all duration-200 border ${
+        className={`pointer-events-auto h-[56px] shrink-0 flex items-center gap-1.5 rounded-full px-2 transition-all duration-200 border ${
           isDarkMode
             ? "bg-[#18181c]/85 border-white/15 shadow-2xl shadow-black/90"
             : "bg-white/90 border-black/10 shadow-2xl shadow-black/15"
@@ -87,7 +87,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       </nav>
 
       {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) có chiều cao 56px bằng tuyệt đối với TabBar */}
-      <div className="flex flex-col items-center gap-2.5 pointer-events-none">
+      <div className="flex flex-col items-center gap-2.5 pointer-events-none shrink-0">
         {/* Nút Thêm ảnh (+) - Kích thước 56px chuẩn bằng chiều cao TabBar */}
         <button
           onClick={onOpenAddPhoto}
