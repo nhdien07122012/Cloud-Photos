@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 15)] - 2026-11-13
-- **Commit SHA**: `11b8119`
+- **Commit SHA**: `bc93b16`
 - **Mục tiêu**:
   1. Khắc phục việc sao lưu bị dừng sau 12 ảnh:
      - Trước đây: `runAutoSync` chỉ cắt đúng 1 lô 12 ảnh (`unsynced.slice(0, 12)`), tải xong thì return và dừng hẳn tiến trình, người dùng có nhiều ảnh hơn phải tự mở đi mở lại app.
