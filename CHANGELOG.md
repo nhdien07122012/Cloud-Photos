@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 13)] - 2026-11-13
-- **Commit SHA**: `d97cb3d`
+- **Commit SHA**: `a894424`
 - **Mục tiêu**:
   1. Khắc phục triệt để lỗi crash app và không load được ảnh:
      - Gỡ bỏ hoàn toàn ActivityKit native / Widget Extension: Apple quy định tính năng Live Activities & App Extension bắt buộc phải có chứng chỉ Apple Developer trả phí với entitlement đặc thù (`com.apple.developer.activitykit`). Khi cài sideload qua TrollStore / Sideloadly / AltStore bằng chứng chỉ miễn phí, việc gọi ActivityKit sẽ bị iOS kernel / SpringBoard ngắt tiến trình (SIGKILL/SIGABRT) gây crash app và nghẽn luồng tải ảnh từ Telegram.
