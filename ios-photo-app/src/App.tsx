@@ -29,18 +29,17 @@ import { PhotoGrid } from "./components/PhotoGrid";
 import { PhotoViewer } from "./components/PhotoViewer";
 import { TabBar } from "./components/TabBar";
 import { SettingsModal } from "./components/SettingsModal";
+import { MemoriesView } from "./components/MemoriesView";
 import {
   RefreshCw,
   Search,
   Folder,
-  Sparkles,
   ShieldCheck,
   ChevronRight,
   AlertCircle,
   Heart,
   Layers,
   ChevronLeft,
-  User,
   Calendar,
   UploadCloud,
   Camera,
@@ -1268,90 +1267,19 @@ export const App: React.FC = () => {
 
         {/* TAB 4: KỶ NIỆM (MEMORIES) */}
         {currentTab === "memories" && (
-          <div className="p-4 space-y-6 animate-in fade-in duration-200 pb-36">
-            <div>
-              <h2 className="text-2xl font-extrabold flex items-center gap-2">
-                <Sparkles className="w-6 h-6 text-purple-500" />
-                Dành Cho Bạn
-              </h2>
-              <p
-                className={`text-sm mt-0.5 ${
-                  isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                }`}
-              >
-                Các khoảnh khắc và bộ sưu tập được gợi ý tự động
-              </p>
-            </div>
-
-            {/* Hero Card: Kỷ niệm nổi bật */}
-            {photos.length > 0 && (
-              <div
-                onClick={() => setSelectedPhoto(photos[0])}
-                className="relative h-64 rounded-3xl overflow-hidden cursor-pointer shadow-2xl active:scale-98 transition-transform"
-              >
-                <img
-                  src={photos[0].url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-5">
-                  <span className="px-3 py-1 bg-purple-600/90 backdrop-blur-md rounded-full text-xs font-extrabold uppercase tracking-wider text-white w-fit mb-2">
-                    Khoảnh khắc nổi bật
-                  </span>
-                  <h3 className="text-xl font-bold text-white leading-snug">
-                    {photos[0].caption ? photos[0].caption.slice(0, 50) + "..." : "Ảnh mới nhất từ kho Telegram"}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-neutral-300 mt-1">
-                    @{photos[0].author || "Telegram"} • {photos[0].date.toLocaleDateString("vi-VN")}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Mục: Tác giả nổi bật */}
-            {featuredCreators.length > 0 && (
-              <div>
-                <h3
-                  className={`text-base font-bold mb-3 flex items-center gap-1.5 ${
-                    isDarkMode ? "text-neutral-200" : "text-neutral-800"
-                  }`}
-                >
-                  <User className="w-5 h-5 text-blue-500" />
-                  Tác giả lưu trữ nhiều nhất
-                </h3>
-                <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-none">
-                  {featuredCreators.map((creator) => (
-                    <div
-                      key={creator.author}
-                      onClick={() => {
-                        setSearchQuery(creator.author);
-                        setCurrentTab("search");
-                      }}
-                      className="flex flex-col items-center shrink-0 w-22 cursor-pointer active:scale-95 transition-transform"
-                    >
-                      <div className="w-18 h-18 rounded-full overflow-hidden p-0.5 bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 mb-1.5 shadow-md">
-                        <img
-                          src={creator.cover}
-                          alt=""
-                          className="w-full h-full object-cover rounded-full bg-neutral-800"
-                        />
-                      </div>
-                      <p className="text-xs sm:text-sm font-bold truncate w-full text-center">
-                        @{creator.author}
-                      </p>
-                      <span
-                        className={`text-xs ${
-                          isDarkMode ? "text-neutral-400" : "text-neutral-500"
-                        }`}
-                      >
-                        {creator.count} ảnh
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <MemoriesView
+            photos={photos}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            postAlbums={postAlbums}
+            isDarkMode={isDarkMode}
+            onSelectPhoto={(p) => setSelectedPhoto(p)}
+            featuredCreators={featuredCreators}
+            onOpenSearchAuthor={(author) => {
+              setSearchQuery(author);
+              setCurrentTab("search");
+            }}
+          />
         )}
       </main>
 

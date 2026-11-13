@@ -4,6 +4,33 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 17)] - 2026-11-14
+- **Commit SHA**: Pending CI/CD
+- **Mục tiêu**:
+  1. Tái thiết kế toàn diện giao diện phần "Kỷ niệm" (Dành Cho Bạn - Memories / For You):
+     - Thay thế thẻ đơn điệu cũ bằng giao diện điện ảnh chuẩn Apple iOS 18 / VisionOS phong phú và cảm xúc.
+     - Header nghệ thuật với lời chào theo buổi ("Chào buổi sáng/chiều/tối"), thanh thống kê mini (Số câu chuyện kỷ niệm, Số ảnh yêu thích, Tổng ảnh trong kho) và nút bấm nhanh "🎲 Ngẫu nhiên một kỷ niệm".
+     - Thẻ Hero Kỷ Niệm Tâm Điểm (Cinematic Hero Card) tỷ lệ lớn với gradient mờ, nhãn chủ đề tự động ("Ngày này năm xưa", "Dấu ấn xưa", "Khoảnh khắc tuần qua"), nút ▶ Phát trình chiếu lớn ở trung tâm và thông tin chi tiết.
+     - Dải cuộn ngang Các Cuộn Kỷ Niệm (Stories Carousel) viền gradient đa sắc rực rỡ (Instagram/Apple style): Kỷ niệm năm xưa, Khoảnh khắc gần đây, Bộ sưu tập yêu thích, Mùa này, Bài viết nhiều ảnh.
+     - Lưới Bộ Sưu Tập Chủ Đề (Themed Memory Mosaics) dạng thẻ 4 ảnh ghép 2x2 nghệ thuật.
+     - Lưới Khoảnh Khắc Ấn Tượng (Spotlight Mosaic Grid) dạng bố cục bất đối xứng lớn/nhỏ đan xen sống động.
+     - Danh sách Tác Giả & Người Đồng Hành với avatar tròn gradient và số lượng ảnh lưu trữ.
+  2. Tích hợp Trình Chiếu Kỷ Niệm Điện Ảnh Toàn Màn Hình (Interactive Cinematic Story Slideshow Viewer):
+     - Xem câu chuyện toàn màn hình đen tuyền với thanh tiến trình phân đoạn (Segmented Progress Bars) chạy tự động 4 giây mỗi ảnh.
+     - Điều hướng thông minh: Chạm bên trái để lùi ảnh, chạm bên phải để tiến ảnh, nhấn giữ màn hình để tạm dừng (pause).
+     - Nút Play/Pause, nút thả tim ❤️ tức thì, nút mở ảnh toàn màn hình để phóng to / tải / chia sẻ.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/MemoriesView.tsx`: Tạo mới component Kỷ niệm toàn diện với đầy đủ các phân khu giao diện và Story Viewer.
+  - `ios-photo-app/src/App.tsx`: Tích hợp `MemoriesView` vào Tab Kỷ niệm, kết nối dữ liệu ảnh, yêu thích, tác giả và bộ sưu tập bài viết.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Đồng bộ nhãn hiển thị lên Build 17.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `17`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 16)] - 2026-11-13
 - **Commit SHA**: `34cc3bc` (CI Run #24)
 - **Mục tiêu**:
