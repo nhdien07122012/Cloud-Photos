@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 16)] - 2026-11-13
-- **Commit SHA**: `9753c8d`
+- **Commit SHA**: `34cc3bc` (CI Run #24)
 - **Mục tiêu**:
   1. Chuyển đổi hoàn toàn sang Chế độ Sao lưu thủ công (Manual Backup Only):
      - Loại bỏ toàn bộ tiến trình quét và tải ngầm tự động (không chạy khi mở app, không chạy khi resume từ nền, không tiêu tốn pin iPhone).
