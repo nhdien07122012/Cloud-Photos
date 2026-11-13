@@ -1082,7 +1082,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       isDarkMode ? "text-neutral-400" : "text-neutral-500"
                     }`}
                   >
-                    CloudPhotos v1.3 • Build 10
+                    CloudPhotos v1.3 • Build 11
                   </p>
                 </div>
               </div>
@@ -1134,7 +1134,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <span className="text-[11px] block text-neutral-500">Phiên bản:</span>
-                    <span className="font-semibold text-sm">v1.3 (Build 10)</span>
+                    <span className="font-semibold text-sm">v1.3 (Build 11)</span>
                   </div>
                   <div
                     className={`p-2.5 rounded-xl border ${
@@ -1163,7 +1163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 10 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 11 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

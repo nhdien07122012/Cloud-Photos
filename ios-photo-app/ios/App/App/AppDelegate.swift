@@ -191,7 +191,7 @@ public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getRecentPhotos(_ call: CAPPluginCall) {
-        let limit = call.getInt("limit") ?? 50
+        let limit = call.getInt("limit") ?? 100
         let status: PHAuthorizationStatus
         if #available(iOS 14, *) {
             status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -205,14 +205,31 @@ public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
 
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.predicate = NSPredicate(format: "mediaType == %d AND isHidden == NO", PHAssetMediaType.image.rawValue)
         options.fetchLimit = limit
-        let assets = PHAsset.fetchAssets(with: .image, options: options)
+
+        // Truy vấn CHỈ TỪ Album Camera Roll / Recents (loại bỏ hoàn toàn ảnh Đã xóa gần đây và Thùng rác)
+        let userLibrary = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum,
+            subtype: .smartAlbumUserLibrary,
+            options: nil
+        ).firstObject
+
+        let assets: PHFetchResult<PHAsset>
+        if let library = userLibrary {
+            assets = PHAsset.fetchAssets(in: library, options: options)
+        } else {
+            assets = PHAsset.fetchAssets(with: .image, options: options)
+        }
 
         var result: [[String: Any]] = []
         assets.enumerateObjects { asset, _, _ in
             let date = asset.creationDate?.timeIntervalSince1970 ?? 0
+            let resources = PHAssetResource.assetResources(for: asset)
+            let filename = resources.first?.originalFilename ?? "photo_\(Int(date)).jpg"
             result.append([
                 "id": asset.localIdentifier,
+                "filename": filename,
                 "timestamp": Int64(date * 1000),
                 "width": asset.pixelWidth,
                 "height": asset.pixelHeight

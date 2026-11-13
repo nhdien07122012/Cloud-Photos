@@ -4,6 +4,7 @@ import { uploadPhotosToTelegram } from "./uploadService";
 
 export interface NativePhoto {
   id: string;
+  filename?: string;
   timestamp: number;
   width: number;
   height: number;
@@ -154,30 +155,55 @@ export interface AutoSyncResult {
   newUploadedPhotos?: PhotoItem[];
 }
 
+let isAutoSyncRunning = false;
+let lastSyncTimestamp = 0;
+
 export async function runAutoSync(
   config: TelegramConfig,
-  onProgress?: (current: number, total: number, filename: string) => void
+  onProgress?: (current: number, total: number, filename: string) => void,
+  existingPhotos?: PhotoItem[]
 ): Promise<AutoSyncResult> {
-  if (!config.isLoggedIn && !config.sessionString) {
+  // 1. Chống chạy đồng thời (Concurrency Lock) & Debounce 3s
+  if (isAutoSyncRunning) {
     return {
-      success: false,
+      success: true,
       syncedCount: 0,
-      message: "Chưa đăng nhập Telegram. Vui lòng kết nối tài khoản trước.",
+      message: "Tiến trình sao lưu đang diễn ra trong nền...",
     };
   }
 
-  // Kiểm tra môi trường iOS Native
-  if (!Capacitor.isNativePlatform()) {
+  const now = Date.now();
+  if (now - lastSyncTimestamp < 3000) {
     return {
-      success: false,
+      success: true,
       syncedCount: 0,
-      message:
-        "Tự động đọc thư viện nền hoạt động đầy đủ khi cài đặt ứng dụng trên iPhone (.ipa). Trên trình duyệt, bạn hãy chạm nút Thêm (+) để chọn ảnh.",
+      message: "Vừa hoàn tất sao lưu gần đây.",
     };
   }
+
+  isAutoSyncRunning = true;
+  lastSyncTimestamp = now;
 
   try {
-    // 1. Kiểm tra và yêu cầu quyền truy cập Photo Library với ReadWrite đầy đủ
+    if (!config.isLoggedIn && !config.sessionString) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message: "Chưa đăng nhập Telegram. Vui lòng kết nối tài khoản trước.",
+      };
+    }
+
+    // Kiểm tra môi trường iOS Native
+    if (!Capacitor.isNativePlatform()) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message:
+          "Tự động đọc thư viện nền hoạt động đầy đủ khi cài đặt ứng dụng trên iPhone (.ipa). Trên trình duyệt, bạn hãy chạm nút Thêm (+) để chọn ảnh.",
+      };
+    }
+
+    // 2. Kiểm tra và yêu cầu quyền truy cập Photo Library với ReadWrite đầy đủ
     let perm = await PhotoSync.checkPermission();
     if (!perm.granted || perm.status === "notDetermined") {
       perm = await PhotoSync.requestPermission();
@@ -193,8 +219,8 @@ export async function runAutoSync(
 
     const isLimited = perm.status === "limited";
 
-    // 2. Lấy danh sách ảnh từ Camera Roll (50 ảnh mới nhất)
-    const res = await PhotoSync.getRecentPhotos({ limit: 50 });
+    // 3. Lấy danh sách ảnh từ Camera Roll (Tối đa 60 ảnh mới nhất)
+    const res = await PhotoSync.getRecentPhotos({ limit: 60 });
     const devicePhotos = res.photos || [];
 
     if (devicePhotos.length === 0) {
@@ -214,8 +240,29 @@ export async function runAutoSync(
       };
     }
 
-    // 3. Lọc ra các ảnh chưa từng sao lưu
     const syncedIds = getSyncedDeviceIds();
+
+    // 4. Đối soát đa tầng với các ảnh đã có trên Telegram Kênh (tránh tuyệt đối sao lưu lặp lại)
+    if (existingPhotos && existingPhotos.length > 0) {
+      const existingNames = new Set(
+        existingPhotos
+          .map((p) => p.caption || "")
+          .filter(Boolean)
+          .map((c) => {
+            const firstLine = c.split("\n")[0] || "";
+            return firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
+          })
+      );
+
+      devicePhotos.forEach((dp) => {
+        if (dp.filename && existingNames.has(dp.filename.toLowerCase())) {
+          syncedIds.add(dp.id);
+        }
+      });
+      saveSyncedDeviceIds(syncedIds);
+    }
+
+    // 5. Lọc ra các ảnh thực sự chưa từng sao lưu
     const unsynced = devicePhotos.filter((p) => !syncedIds.has(p.id));
 
     if (unsynced.length === 0) {
@@ -229,11 +276,16 @@ export async function runAutoSync(
       };
     }
 
-    // 4. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh mỗi lượt)
-    const filesToUpload: File[] = [];
-    const idsToMark: string[] = [];
+    // 6. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh mỗi lượt)
     const batch = unsynced.slice(0, 12);
     const remaining = unsynced.length - batch.length;
+
+    // ĐÁNH DẤU TRƯỚC các ID đang xử lý vào syncedIds để ngăn chặn các trigger khác đọc trùng
+    batch.forEach((item) => syncedIds.add(item.id));
+    saveSyncedDeviceIds(syncedIds);
+
+    const filesToUpload: File[] = [];
+    const successfulIds: string[] = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
@@ -243,16 +295,22 @@ export async function runAutoSync(
       try {
         const dataRes = await PhotoSync.getPhotoData({ id: item.id });
         if (dataRes.base64) {
-          const file = base64ToFile(dataRes.base64, dataRes.filename);
+          const file = base64ToFile(
+            dataRes.base64,
+            dataRes.filename || item.filename || `photo_${Date.now()}.jpg`
+          );
           filesToUpload.push(file);
-          idsToMark.push(item.id);
+          successfulIds.push(item.id);
         }
       } catch (photoErr) {
         console.warn(`Bỏ qua ảnh ${item.id} do lỗi đọc:`, photoErr);
+        // Trả lại ID để lần sau thử lại
+        syncedIds.delete(item.id);
       }
     }
 
     if (filesToUpload.length === 0) {
+      saveSyncedDeviceIds(syncedIds);
       return {
         success: true,
         syncedCount: 0,
@@ -261,15 +319,22 @@ export async function runAutoSync(
       };
     }
 
-    // 5. Upload lên Telegram Kênh "Kho ảnh đồng bộ Telegram"
-    const uploadedPhotos = await uploadPhotosToTelegram(config, filesToUpload, (prog) => {
-      if (onProgress) {
-        onProgress(prog.current, prog.total, prog.currentFileName);
-      }
-    });
+    // 7. Upload lên Telegram Kênh "Kho ảnh đồng bộ Telegram"
+    let uploadedPhotos: PhotoItem[] = [];
+    try {
+      uploadedPhotos = await uploadPhotosToTelegram(config, filesToUpload, (prog) => {
+        if (onProgress) {
+          onProgress(prog.current, prog.total, prog.currentFileName);
+        }
+      });
+    } catch (uploadErr) {
+      // Nếu upload toàn bộ thất bại, hoàn tác các ID để thử lại lần sau
+      successfulIds.forEach((id) => syncedIds.delete(id));
+      saveSyncedDeviceIds(syncedIds);
+      throw uploadErr;
+    }
 
-    // 6. Lưu lại các ID đã sao lưu thành công
-    idsToMark.forEach((id) => syncedIds.add(id));
+    // Đảm bảo lưu chắc chắn danh sách ID đã hoàn thành
     saveSyncedDeviceIds(syncedIds);
 
     const extraMsg = remaining > 0 ? ` (Còn ${remaining} ảnh sẽ tiếp tục đồng bộ)` : "";
@@ -287,6 +352,8 @@ export async function runAutoSync(
       syncedCount: 0,
       message: "Lỗi đồng bộ tự động: " + (err.message || String(err)),
     };
+  } finally {
+    isAutoSyncRunning = false;
   }
 }
 
@@ -346,11 +413,7 @@ export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
 
     const res = await PhotoSync.deletePhotos({ ids: targetIds });
     if (res.success && res.deletedCount > 0) {
-      // Dọn bớt ID đã xóa khỏi local set
-      const synced = getSyncedDeviceIds();
-      targetIds.forEach((id) => synced.delete(id));
-      saveSyncedDeviceIds(synced);
-
+      // TUYỆT ĐỐI GIỮ LẠI targetIds trong syncedIds để ảnh đã xóa KHÔNG BAO GIỜ bị tải lại!
       return {
         success: true,
         deletedCount: res.deletedCount,

@@ -87,23 +87,33 @@ export const App: React.FC = () => {
   });
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [autoSyncStatusText, setAutoSyncStatusText] = useState("");
+  const isSyncingRef = useRef(false);
 
   const executeAutoSync = async (notify = true) => {
-    if (isAutoSyncing) return;
+    if (isSyncingRef.current) return;
     if (!config.isLoggedIn && !config.sessionString) {
       if (notify) showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
       return;
     }
+    isSyncingRef.current = true;
     setIsAutoSyncing(true);
     setAutoSyncStatusText("Đang kiểm tra thư viện iPhone...");
     try {
-      const res = await runAutoSync(config, (current, total, file) => {
-        setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
-      });
+      const res = await runAutoSync(
+        config,
+        (current, total, file) => {
+          setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
+        },
+        photos // Đối soát với danh sách ảnh đang có trên Telegram
+      );
       if (res.syncedCount > 0) {
         showToast(res.message);
         if (res.newUploadedPhotos && res.newUploadedPhotos.length > 0) {
-          setPhotos((prev) => [...res.newUploadedPhotos!, ...prev]);
+          setPhotos((prev) => {
+            const existingIds = new Set(prev.map((p) => p.messageId));
+            const fresh = res.newUploadedPhotos!.filter((p) => !existingIds.has(p.messageId));
+            return [...fresh, ...prev];
+          });
         } else {
           loadPhotos(true);
         }
@@ -114,6 +124,7 @@ export const App: React.FC = () => {
       console.error("Auto sync trigger error:", e);
       if (notify) showToast("Lỗi đồng bộ tự động: " + (e.message || ""));
     } finally {
+      isSyncingRef.current = false;
       setIsAutoSyncing(false);
       setAutoSyncStatusText("");
     }
@@ -354,13 +365,17 @@ export const App: React.FC = () => {
     }
   }, [autoSync, config.sessionString, config.isLoggedIn]);
 
-  // Lắng nghe khi app mở lại từ nền (App Resume) để tự động quét sao lưu ảnh mới chụp
+  // Lắng nghe khi app mở lại từ nền (App Resume) để tự động quét sao lưu ảnh mới chụp (có debounce 2.5s)
   useEffect(() => {
     let listenerHandle: any = null;
+    let resumeTimeout: any = null;
     CapApp.addListener("appStateChange", ({ isActive }) => {
       if (isActive && autoSync && (config.isLoggedIn || config.sessionString)) {
-        loadPhotos(true);
-        executeAutoSync(false);
+        if (resumeTimeout) clearTimeout(resumeTimeout);
+        resumeTimeout = setTimeout(() => {
+          loadPhotos(true);
+          executeAutoSync(false);
+        }, 2500);
       }
     }).then((h) => {
       listenerHandle = h;
@@ -370,6 +385,7 @@ export const App: React.FC = () => {
       if (listenerHandle && listenerHandle.remove) {
         listenerHandle.remove();
       }
+      if (resumeTimeout) clearTimeout(resumeTimeout);
     };
   }, [autoSync, config.sessionString, config.isLoggedIn]);
 

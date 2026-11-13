@@ -4,6 +4,31 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 11)] - 2026-11-13
+- **Commit SHA**: `b6fed74`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi tự động sao lưu bị lặp lại 2 lần (Duplicate Uploads):
+     - Thiết lập Mutex Lock đa tầng (`isAutoSyncRunning` trong service và `isSyncingRef` trong React) ngăn chặn tuyệt đối tình trạng chạy đồng thời giữa `useEffect` khi mở app và sự kiện `appStateChange`.
+     - Thêm cơ chế Debounce 2.5 giây khi app quay lại từ nền (Resume) để ổn định trạng thái.
+     - Đánh dấu trước các ID ảnh (`syncedIds.add`) ngay khi chuẩn bị tải lên thay vì đợi sau khi tải xong mới lưu, loại bỏ khoảng hở thời gian gây trùng lặp.
+     - Lọc trùng lặp `existingIds` trước khi cập nhật mảng `photos` trong giao diện.
+  2. Khắc phục triệt để lỗi ảnh đã xóa khỏi Thư viện ảnh iPhone vẫn bị thêm lại Telegram:
+     - Trong PhotoKit native (`AppDelegate.swift`): chuyển đổi truy vấn ảnh sang Album Camera Roll chính xác `smartAlbumUserLibrary` kèm bộ lọc `mediaType == image AND isHidden == NO`. Khi người dùng xóa ảnh trên iPhone, PhotoKit sẽ loại bỏ ngay khỏi album này và không bao giờ đọc lại các ảnh trong Thùng rác / "Đã xóa gần đây".
+     - Trong `autoSyncService.ts`: Đối soát tự động với danh sách ảnh đang có trên Kênh Telegram (`existingPhotos`), nếu ảnh đã có trên Telegram thì tự động ghi nhớ ID để không bao giờ tải lại.
+     - Sửa logic `freeUpDeviceStorage`: TUYỆT ĐỐI GIỮ NGUYÊN các ID ảnh đã dọn dẹp trong `syncedDeviceIds` để các ảnh đã xóa khỏi máy vĩnh viễn không bị quét lại.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Cập nhật `getRecentPhotos` sử dụng `smartAlbumUserLibrary` và trả kèm `filename` gốc.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bổ sung Mutex Lock `isAutoSyncRunning`, debounce 3s, đối soát `existingPhotos`, pre-mark batch IDs và giữ nguyên ID khi giải phóng bộ nhớ máy.
+  - `ios-photo-app/src/App.tsx`: Thêm `isSyncingRef`, truyền `photos` vào `runAutoSync` để đối soát, deduplicate trước khi update state và debounce 2.5s trong `appStateChange`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp số hiệu bản dựng lên `CloudPhotos v1.3 • Build 11`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `11`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 10)] - 2026-11-13
 - **Commit SHA**: `81e32b0`
 - **Mục tiêu**:
