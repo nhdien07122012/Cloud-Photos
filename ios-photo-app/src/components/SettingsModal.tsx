@@ -11,6 +11,7 @@ import {
   Lock,
   LogOut,
   RefreshCw,
+  RotateCcw,
   Database,
   Trash2,
   Moon,
@@ -33,6 +34,7 @@ import {
   getFreeableDevicePhotos,
   freeUpDeviceStorage,
   getSyncedDeviceIds,
+  resetSyncedDeviceIds,
 } from "../services/autoSyncService";
 
 interface SettingsModalProps {
@@ -46,7 +48,7 @@ interface SettingsModalProps {
   isDarkMode: boolean;
   autoSync: boolean;
   onAutoSyncChange: (enabled: boolean) => void;
-  onTriggerSyncNow?: () => void;
+  onTriggerSyncNow?: (force?: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -138,8 +140,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleClearCache = async () => {
     await clearPhotoCache();
+    resetSyncedDeviceIds();
     setCacheStats({ count: 0, sizeMB: "0" });
-    setStatusMsg("Đã dọn dẹp sạch bộ nhớ đệm ảnh!");
+    setStatusMsg("Đã dọn dẹp sạch bộ nhớ đệm và làm mới lịch sử đồng bộ!");
     if (onCacheCleared) onCacheCleared();
   };
 
@@ -411,14 +414,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {onTriggerSyncNow && (
-                      <button
-                        type="button"
-                        onClick={onTriggerSyncNow}
-                        className="w-full mt-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-transform shadow-md"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Quét & Đồng bộ ảnh ngay bây giờ
-                      </button>
+                      <div className="flex flex-col gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => onTriggerSyncNow(true)}
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-transform shadow-md"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Quét & Đồng bộ ảnh ngay bây giờ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetSyncedDeviceIds();
+                            onTriggerSyncNow(true);
+                          }}
+                          className={`w-full py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-transform border ${
+                            isDarkMode
+                              ? "border-neutral-700/80 bg-neutral-800/60 hover:bg-neutral-800 text-neutral-300"
+                              : "border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                          }`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                          Làm mới lịch sử & Quét lại từ đầu
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1163,7 +1183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 13 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 14 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

@@ -14,7 +14,7 @@ import {
   removeMultiplePhotosFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
-import { runAutoSync } from "./services/autoSyncService";
+import { runAutoSync, removeSyncedDeviceIdsByFilenames } from "./services/autoSyncService";
 import {
   getUserAlbums,
   createNewAlbum,
@@ -89,7 +89,7 @@ export const App: React.FC = () => {
   const [autoSyncStatusText, setAutoSyncStatusText] = useState("");
   const isSyncingRef = useRef(false);
 
-  const executeAutoSync = async (notify = true) => {
+  const executeAutoSync = async (notify = true, options?: { force?: boolean }) => {
     if (isSyncingRef.current) return;
     if (!config.isLoggedIn && !config.sessionString) {
       if (notify) showToast("Vui lòng kết nối tài khoản Telegram để sao lưu");
@@ -114,7 +114,8 @@ export const App: React.FC = () => {
           setIsAutoSyncing(true);
           setAutoSyncStatusText(`Đang sao lưu ${current}/${total}: ${file}`);
         },
-        photos // Đối soát với danh sách ảnh đang có trên Telegram
+        photos, // Đối soát với danh sách ảnh đang có trên Telegram
+        options
       );
       if (res.syncedCount > 0) {
         showToast(res.message);
@@ -146,7 +147,8 @@ export const App: React.FC = () => {
     localStorage.setItem("cloud_photos_auto_sync", String(enabled));
     if (enabled) {
       showToast("Đã bật tự động sao lưu ảnh! 🔄");
-      executeAutoSync(true);
+      // Khi người dùng chủ động bật công tắc, ép buộc quét ngay với force: true
+      executeAutoSync(true, { force: true });
     } else {
       showToast("Đã tắt tự động sao lưu");
     }
@@ -368,13 +370,15 @@ export const App: React.FC = () => {
     }
   }, [config.apiId, config.apiHash, config.sessionString, config.isLoggedIn]);
 
-  // Tự động sao lưu ảnh Camera Roll lên Telegram khi mở app hoặc bật Auto-Sync
+  const initialSyncDoneRef = useRef(false);
+
+  // Tự động sao lưu ảnh Camera Roll lên Telegram khi vừa mở app (chỉ chạy 1 lần khi app mount)
   useEffect(() => {
-    if (autoSync && (config.isLoggedIn || config.sessionString)) {
-      loadPhotos(true);
+    if (!initialSyncDoneRef.current && autoSync && (config.isLoggedIn || config.sessionString)) {
+      initialSyncDoneRef.current = true;
       executeAutoSync(false);
     }
-  }, [autoSync, config.sessionString, config.isLoggedIn]);
+  }, [config.sessionString, config.isLoggedIn]);
 
   // Lắng nghe khi app mở lại từ nền (App Resume) để tự động quét sao lưu ảnh mới chụp (có debounce 2.5s)
   useEffect(() => {
@@ -605,14 +609,28 @@ export const App: React.FC = () => {
 
     setIsDeletingBatch(true);
     try {
+      const deletedFilenames: string[] = [];
+      const deleteSet = new Set(idsToDelete);
+      photos.forEach((p) => {
+        if (deleteSet.has(p.messageId) && p.caption) {
+          const firstLine = p.caption.split("\n")[0] || "";
+          const fname = firstLine.replace(/^📷\s*/, "").trim();
+          if (fname) deletedFilenames.push(fname);
+        }
+      });
+
       // 1. Xóa khỏi IndexedDB
       await removeMultiplePhotosFromCache(idsToDelete);
 
       // 2. Cập nhật state UI ngay lập tức
-      const deleteSet = new Set(idsToDelete);
       setPhotos((prev) => prev.filter((p) => !deleteSet.has(p.messageId)));
 
-      // 3. Xóa trên Kênh Telegram
+      // 3. Dọn dẹp syncedIds để nếu người dùng muốn sao lưu lại thì app nhận diện được
+      if (deletedFilenames.length > 0) {
+        removeSyncedDeviceIdsByFilenames(deletedFilenames);
+      }
+
+      // 4. Xóa trên Kênh Telegram
       await deleteMultipleTelegramPhotos(config, idsToDelete);
 
       showToast(`Đã xóa ${idsToDelete.length} ảnh thành công 🗑️`);
@@ -1694,11 +1712,19 @@ export const App: React.FC = () => {
           onClose={() => setSelectedPhoto(null)}
           onSelectPhoto={(p) => setSelectedPhoto(p)}
           onDeletePhoto={async (messageId) => {
+            const photoToDelete = photos.find((p) => p.messageId === messageId);
             await removePhotoFromCache(messageId);
             setPhotos((prev) => prev.filter((p) => p.messageId !== messageId));
             if (selectedUserAlbum) {
               removePhotoFromAlbum(selectedUserAlbum.id, messageId);
               setUserAlbums(getUserAlbums());
+            }
+            if (photoToDelete?.caption) {
+              const firstLine = photoToDelete.caption.split("\n")[0] || "";
+              const fname = firstLine.replace(/^📷\s*/, "").trim();
+              if (fname) {
+                removeSyncedDeviceIdsByFilenames([fname]);
+              }
             }
             await deleteTelegramPhoto(config, messageId);
           }}
@@ -1717,9 +1743,9 @@ export const App: React.FC = () => {
         isDarkMode={isDarkMode}
         autoSync={autoSync}
         onAutoSyncChange={handleAutoSyncChange}
-        onTriggerSyncNow={() => {
+        onTriggerSyncNow={(force) => {
           setIsSettingsOpen(false);
-          executeAutoSync(true);
+          executeAutoSync(true, { force: force ?? true });
         }}
       />
     </div>

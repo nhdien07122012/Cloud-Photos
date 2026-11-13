@@ -4,6 +4,31 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 14)] - 2026-11-13
+- **Commit SHA**: `f5d8731`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi "Vừa hoàn tất sao lưu gần đây" khi người dùng bật tắt sao lưu tự động:
+     - Xóa bỏ tình trạng xung đột chạy đua (Race Condition) giữa hàm Toggle `handleAutoSyncChange` và `useEffect([autoSync])`. Dùng `initialSyncDoneRef` đảm bảo app chỉ kích hoạt quét ngầm 1 lần duy nhất khi khởi động.
+     - Bổ sung cờ `{ force: true }` khi người dùng chủ động bật công tắc hoặc bấm nút "Quét & Đồng bộ ảnh ngay". Khi có cờ này, hệ thống bỏ qua hoàn toàn cơ chế debounce 3s và không bao giờ báo "Vừa hoàn tất sao lưu gần đây".
+  2. Khắc phục triệt để lỗi không quét hay sao lưu lại khi đã xóa ảnh trên Telegram:
+     - Tái thiết kế cơ chế Đối soát hai chiều (Two-Way Cloud Reconciliation): So sánh trực tiếp danh sách ảnh trên Camera Roll của iPhone với dữ liệu đám mây Telegram (`existingPhotos` / IndexedDB).
+     - Loại bỏ việc "chết cứng" danh sách ID trong `localStorage`: Khi ảnh trên iPhone không còn tồn tại trên Telegram (do người dùng xóa ảnh để test hoặc tải lại), hệ thống tự động loại bỏ ID khỏi `syncedIds` để sẵn sàng sao lưu lại.
+     - Khi xóa ảnh trong app (`onDeletePhoto` hoặc `handleExecuteDeleteBatch`), tự động dọn dẹp ID tương ứng qua `removeSyncedDeviceIdsByFilenames`.
+     - Thêm nút **"Làm mới lịch sử & Quét lại từ đầu"** (`RotateCcw`) và tự động reset lịch sử khi người dùng bấm "Xóa bộ nhớ đệm".
+  3. Bảo đảm an toàn tuyệt đối cho tính năng "Giải phóng dung lượng iPhone" (`freeUpDeviceStorage`): Chỉ cho phép dọn dẹp các bức ảnh đã được xác thực 100% đang có trên Telegram.
+  4. Nâng cấp phiên bản lên `CloudPhotos v1.3 • Build 14`.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bổ sung đối soát hai chiều Telegram, hỗ trợ `options.force`, bỏ debounce khi người dùng thao tác chủ động, thêm các helper `resetSyncedDeviceIds`, `removeSyncedDeviceIds`, `removeSyncedDeviceIdsByFilenames`.
+  - `ios-photo-app/src/App.tsx`: Ngăn chặn race condition giữa toggle và effect bằng `initialSyncDoneRef`, truyền `options.force`, dọn dẹp synced IDs khi xóa ảnh đơn lẻ hoặc hàng loạt.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Thêm nút "Làm mới lịch sử & Quét lại từ đầu", reset lịch sử khi xóa cache, nâng cấp version text lên Build 14.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `14`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 13)] - 2026-11-13
 - **Commit SHA**: `a894424`
 - **Mục tiêu**:

@@ -1,6 +1,7 @@
 import { registerPlugin, Capacitor } from "@capacitor/core";
 import type { TelegramConfig, PhotoItem } from "../types";
 import { uploadPhotosToTelegram } from "./uploadService";
+import { getCachedPhotosFromDB } from "./photoStorage";
 
 export interface NativePhoto {
   id: string;
@@ -122,6 +123,53 @@ export function saveSyncedDeviceIds(set: Set<string>): void {
   }
 }
 
+/**
+ * Xóa toàn bộ lịch sử ID đã sao lưu để ép ứng dụng đối soát và quét lại từ đầu
+ */
+export function resetSyncedDeviceIds(): void {
+  try {
+    localStorage.removeItem(SYNCED_IDS_STORAGE_KEY);
+  } catch (e) {
+    console.error("Lỗi xóa synced IDs:", e);
+  }
+}
+
+/**
+ * Xóa một số ID thiết bị cụ thể khỏi danh sách đã sao lưu
+ */
+export function removeSyncedDeviceIds(ids: string[]): void {
+  try {
+    const current = getSyncedDeviceIds();
+    ids.forEach((id) => current.delete(id));
+    saveSyncedDeviceIds(current);
+  } catch (e) {
+    console.error("Lỗi xóa một số synced IDs:", e);
+  }
+}
+
+/**
+ * Dọn dẹp ID đã sao lưu theo tên file ảnh bị xóa
+ */
+export async function removeSyncedDeviceIdsByFilenames(filenames: string[]): Promise<void> {
+  if (!Capacitor.isNativePlatform() || filenames.length === 0) return;
+  try {
+    const targetSet = new Set(filenames.map((f) => f.trim().toLowerCase()));
+    const res = await PhotoSync.getRecentPhotos({ limit: 100 });
+    const devicePhotos = res.photos || [];
+    const idsToRemove: string[] = [];
+    devicePhotos.forEach((dp) => {
+      if (dp.filename && targetSet.has(dp.filename.toLowerCase())) {
+        idsToRemove.push(dp.id);
+      }
+    });
+    if (idsToRemove.length > 0) {
+      removeSyncedDeviceIds(idsToRemove);
+    }
+  } catch (e) {
+    console.error("Lỗi xóa synced IDs theo filename:", e);
+  }
+}
+
 // Mở trực tiếp màn hình Cài đặt của ứng dụng trên iPhone
 export async function openNativeSettings(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
@@ -170,9 +218,12 @@ let lastSyncTimestamp = 0;
 export async function runAutoSync(
   config: TelegramConfig,
   onProgress?: (current: number, total: number, filename: string) => void,
-  existingPhotos?: PhotoItem[]
+  existingPhotos?: PhotoItem[],
+  options?: { force?: boolean }
 ): Promise<AutoSyncResult> {
-  // 1. Chống chạy đồng thời (Concurrency Lock) & Debounce 3s
+  const isForce = !!options?.force;
+
+  // 1. Chống chạy đồng thời (Concurrency Lock)
   if (isAutoSyncRunning) {
     return {
       success: true,
@@ -182,7 +233,8 @@ export async function runAutoSync(
   }
 
   const now = Date.now();
-  if (now - lastSyncTimestamp < 3000) {
+  // Chỉ debounce 3s khi quét tự động ngầm. Khi người dùng chủ động thao tác (force: true), BỎ QUA HOÀN TOÀN
+  if (!isForce && now - lastSyncTimestamp < 3000) {
     return {
       success: true,
       syncedCount: 0,
@@ -191,7 +243,7 @@ export async function runAutoSync(
   }
 
   isAutoSyncRunning = true;
-  lastSyncTimestamp = now;
+  lastSyncTimestamp = isForce ? 0 : now;
 
   try {
     if (!config.isLoggedIn && !config.sessionString) {
@@ -249,29 +301,63 @@ export async function runAutoSync(
       };
     }
 
-    const syncedIds = getSyncedDeviceIds();
+    // 4. Đối soát hai chiều (Two-Way Cloud Reconciliation)
+    // Nạp danh sách ảnh Telegram: nếu existingPhotos rỗng, nạp từ IndexedDB
+    let cloudPhotos = existingPhotos && existingPhotos.length > 0 ? existingPhotos : [];
+    if (cloudPhotos.length === 0) {
+      try {
+        cloudPhotos = await getCachedPhotosFromDB();
+      } catch (e) {
+        console.warn("Lỗi đọc cache ảnh để đối soát:", e);
+      }
+    }
 
-    // 4. Đối soát đa tầng với các ảnh đã có trên Telegram Kênh (tránh tuyệt đối sao lưu lặp lại)
-    if (existingPhotos && existingPhotos.length > 0) {
-      const existingNames = new Set(
-        existingPhotos
-          .map((p) => p.caption || "")
-          .filter(Boolean)
-          .map((c) => {
-            const firstLine = c.split("\n")[0] || "";
-            return firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
-          })
-      );
+    const existingNames = new Set(
+      cloudPhotos
+        .map((p) => p.caption || "")
+        .filter(Boolean)
+        .map((c) => {
+          const firstLine = c.split("\n")[0] || "";
+          return firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
+        })
+    );
 
+    let syncedIds = getSyncedDeviceIds();
+
+    if (isForce) {
+      // Khi ép buộc quét (force = true - ví dụ vừa bật lại auto-sync hoặc bấm Quét ngay):
+      // Tái thiết lập syncedIds CHUẨN XÁC theo những gì THỰC TẾ đang có trên Telegram!
+      // Bất kỳ ảnh nào trên iPhone mà KHÔNG có trên Telegram (hoặc đã bị xóa khỏi Telegram)
+      // sẽ KHÔNG nằm trong syncedIds và sẽ được tự động sao lưu lại!
+      syncedIds = new Set<string>();
       devicePhotos.forEach((dp) => {
         if (dp.filename && existingNames.has(dp.filename.toLowerCase())) {
           syncedIds.add(dp.id);
         }
       });
       saveSyncedDeviceIds(syncedIds);
+    } else {
+      // Khi quét thông thường:
+      // 1. Những ảnh nào trên máy đã có trên Telegram thì chắc chắn ghi nhận vào syncedIds
+      devicePhotos.forEach((dp) => {
+        if (dp.filename && existingNames.has(dp.filename.toLowerCase())) {
+          syncedIds.add(dp.id);
+        }
+      });
+      // 2. Nếu đã có dữ liệu đám mây (cloudPhotos) và có ảnh trên iPhone KHÔNG CÒN trên Telegram:
+      //    (ví dụ người dùng đã xóa ảnh trên Telegram để sao lưu lại)
+      //    thì loại bỏ khỏi syncedIds để cho phép sao lưu lại!
+      if (cloudPhotos.length > 0) {
+        devicePhotos.forEach((dp) => {
+          if (dp.filename && !existingNames.has(dp.filename.toLowerCase())) {
+            syncedIds.delete(dp.id);
+          }
+        });
+      }
+      saveSyncedDeviceIds(syncedIds);
     }
 
-    // 5. Lọc ra các ảnh thực sự chưa từng sao lưu
+    // 5. Lọc ra các ảnh thực sự chưa có trên Telegram
     const unsynced = devicePhotos.filter((p) => !syncedIds.has(p.id));
 
     if (unsynced.length === 0) {
@@ -370,18 +456,35 @@ export async function runAutoSync(
 /**
  * Lấy danh sách ID ảnh đã sao lưu lên Telegram và hiện vẫn còn tồn tại trên iPhone
  */
-export async function getFreeableDevicePhotos(): Promise<string[]> {
+export async function getFreeableDevicePhotos(existingPhotos?: PhotoItem[]): Promise<string[]> {
   if (!Capacitor.isNativePlatform()) return [];
   try {
-    const syncedIds = getSyncedDeviceIds();
-    if (syncedIds.size === 0) return [];
+    let cloudPhotos = existingPhotos && existingPhotos.length > 0 ? existingPhotos : [];
+    if (cloudPhotos.length === 0) {
+      try {
+        cloudPhotos = await getCachedPhotosFromDB();
+      } catch (e) {
+        console.warn("Lỗi đọc cache ảnh khi tính freeable space:", e);
+      }
+    }
+
+    const existingNames = new Set(
+      cloudPhotos
+        .map((p) => p.caption || "")
+        .filter(Boolean)
+        .map((c) => {
+          const firstLine = c.split("\n")[0] || "";
+          return firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
+        })
+    );
 
     const res = await PhotoSync.getRecentPhotos({ limit: 100 });
     const devicePhotos = res.photos || [];
 
+    // Chỉ cho phép giải phóng các ảnh đã được bảo chứng 100% tồn tại trên Telegram!
     const freeable = devicePhotos
-      .map((p) => p.id)
-      .filter((id) => syncedIds.has(id));
+      .filter((p) => p.filename && existingNames.has(p.filename.toLowerCase()))
+      .map((p) => p.id);
 
     return freeable;
   } catch (e) {
@@ -398,6 +501,7 @@ export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
   success: boolean;
   deletedCount: number;
   message: string;
+  idsToDelete?: string[];
 }> {
   if (!Capacitor.isNativePlatform()) {
     return {
@@ -423,11 +527,11 @@ export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
 
     const res = await PhotoSync.deletePhotos({ ids: targetIds });
     if (res.success && res.deletedCount > 0) {
-      // TUYỆT ĐỐI GIỮ LẠI targetIds trong syncedIds để ảnh đã xóa KHÔNG BAO GIỜ bị tải lại!
       return {
         success: true,
         deletedCount: res.deletedCount,
         message: `Đã giải phóng thành công ${res.deletedCount} ảnh khỏi iPhone! (Ảnh vẫn được lưu an toàn 100% trên Telegram)`,
+        idsToDelete: targetIds,
       };
     } else {
       return {
