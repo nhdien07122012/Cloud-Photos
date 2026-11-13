@@ -4,6 +4,30 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 4)] - 2026-11-13
+- **Commit SHA**: `86d02d8`
+- **Mục tiêu**: Tái thiết kế toàn diện khu vực Header theo phong cách Apple Photos iOS 18 (loại bỏ thanh phân đoạn cũ, đổi tên thành "Thư viện" kèm hiển thị khoảng thời gian lớn), tích hợp Menu popover kính mờ chuẩn iOS (Sắp xếp theo Đã thêm gần đây / Ngày chụp có dấu tích, Lọc nội dung, Tùy chọn xem), bổ sung chế độ Chọn ("Chọn" / "Xong") và Xóa hàng loạt nhiều ảnh cùng một lần trên cả Telegram Channel và IndexedDB, đồng thời phóng to typography và toàn bộ nút bấm cảm ứng (TabBar, Floating Button, Header) giúp thao tác ngón tay cực kỳ dễ dàng.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/Header.tsx`: Tái thiết kế theo iOS 18 Photos:
+    - Loại bỏ triệt để thanh phân đoạn (Tất cả / Hôm nay / Tuần này / Yêu thích / Album) phía trên ảnh.
+    - Tiêu đề chữ lớn **"Thư viện"** (`text-3xl sm:text-4xl font-extrabold`) kèm dòng phụ đề ngày tháng (e.g. `19 thg 8 – 10 thg 9, 2026`).
+    - Nút tròn kính mờ Frosted Glass 3 gạch ngang (`w-11 h-11`) mở Menu Popover chuẩn iOS 18: Sắp xếp theo Đã thêm gần đây / Sắp xếp theo Ngày chụp có dấu tích bên trái, mục Lọc nội dung và Tùy chọn xem mở rộng.
+    - Nút viên nang kính mờ lớn **"Chọn" / "Xong"** (`px-5 py-2.5 text-base font-bold`) chuyển đổi chế độ chọn ảnh.
+  - `ios-photo-app/src/components/PhotoGrid.tsx`: Bổ sung chế độ chọn ảnh (`isSelectMode`), vòng tròn checkmark xanh dương viền kép trên từng ảnh được chọn, phóng to tiêu đề ngày nhóm ảnh (`text-lg sm:text-xl font-black`).
+  - `ios-photo-app/src/components/TabBar.tsx`: Phóng to thanh điều hướng đáy (chiều cao 64px, nhãn `text-xs font-bold`, icon 24px) cùng 2 nút nổi hành động Thêm (+) và Tìm kiếm (62px x 62px, icon 28px).
+  - `ios-photo-app/src/services/photoStorage.ts`: Bổ sung hàm `removeMultiplePhotosFromCache(messageIds)` thu hồi Blob URL và xóa sạch các bản ghi ảnh khỏi IndexedDB trong 1 giao dịch duy nhất.
+  - `ios-photo-app/src/services/telegramClient.ts`: Bổ sung hàm `deleteMultipleTelegramPhotos(config, messageIds)` thực hiện xóa đồng loạt tin nhắn trên Telegram qua GramJS MTProto `client.deleteMessages(peer, ids, { revoke: true })`.
+  - `ios-photo-app/src/App.tsx`: Tích hợp toàn diện logic Chế độ chọn (`isSelectMode`, `selectedPhotoIds`), tính toán dải ngày tự động, Action Bar đáy nổi hiển thị số ảnh đã chọn, nút Chọn tất cả / Bỏ chọn, nút Yêu thích hàng loạt và Xóa hàng loạt kèm Action Sheet xác nhận.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Đồng bộ số hiệu phiên bản `CloudPhotos v1.3 • Build 4` và tên tác giả Diễn Nguyễn.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `4`, `MARKETING_VERSION` lên `1.3`.
+  - `ios-photo-app/package.json`: Tăng version lên `1.3.0`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.2 (Build 3)] - 2026-11-13
 - **Commit SHA**: `a3c71aa`
 - **Mục tiêu**: Nâng cấp toàn diện logic Album chuẩn Apple Photos (tạo album tùy chỉnh, thêm/chọn ảnh từ kho hoặc import máy), thiết kế bộ App Icon mới phong cách Đám mây kính mờ Frosted Glass + Cánh hoa sắc màu trên nền Midnight Navy, cập nhật thông tin tác giả Diễn Nguyễn, bổ sung chức năng Tự động sao lưu nền (Auto-Sync) và tối ưu giao diện Cài đặt thu gọn dạng Accordion/Drilldown.

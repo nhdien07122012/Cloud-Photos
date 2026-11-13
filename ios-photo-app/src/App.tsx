@@ -5,10 +5,12 @@ import {
   saveStoredConfig,
   fetchChannelPhotos,
   deleteTelegramPhoto,
+  deleteMultipleTelegramPhotos,
 } from "./services/telegramClient";
 import {
   getCachedPhotosFromDB,
   removePhotoFromCache,
+  removeMultiplePhotosFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
 import {
@@ -57,9 +59,16 @@ export const App: React.FC = () => {
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
   const [currentTab, setCurrentTab] = useState("library");
   const [activeFilter, setActiveFilter] = useState("Tất cả");
+  const [sortBy, setSortBy] = useState<"added" | "date">("date");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAlbum, setSelectedAlbum] = useState<PostAlbum | null>(null);
+
+  // Chế độ Chọn Nhiều Ảnh (Select Mode)
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string | number>>(new Set());
+  const [isConfirmDeleteBatchOpen, setIsConfirmDeleteBatchOpen] = useState(false);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   // User Custom Albums State
   const [userAlbums, setUserAlbums] = useState<UserAlbum[]>(getUserAlbums);
@@ -136,7 +145,7 @@ export const App: React.FC = () => {
   const touchStartY = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (window.scrollY <= 5 && !loading) {
+    if (window.scrollY <= 5 && !loading && !isSelectMode) {
       touchStartY.current = e.touches[0].clientY;
       setIsPulling(true);
     } else {
@@ -145,7 +154,7 @@ export const App: React.FC = () => {
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartY.current === null || loading) return;
+    if (touchStartY.current === null || loading || isSelectMode) return;
     const currentY = e.touches[0].clientY;
     const diff = currentY - touchStartY.current;
     if (diff > 0 && window.scrollY <= 5) {
@@ -160,7 +169,7 @@ export const App: React.FC = () => {
     if (touchStartY.current === null) return;
     setIsPulling(false);
     touchStartY.current = null;
-    if (pullDistance >= 55 && !loading) {
+    if (pullDistance >= 55 && !loading && !isSelectMode) {
       setPullDistance(55);
       await loadPhotos();
     }
@@ -347,10 +356,10 @@ export const App: React.FC = () => {
     return Array.from(map.entries())
       .map(([author, info]) => ({ author, ...info }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 6);
+      .slice(0, 8);
   }, [photos]);
 
-  // Lọc ảnh theo Filter và Search Query
+  // Lọc và Sắp xếp ảnh
   const filteredPhotos = useMemo(() => {
     let list = [...photos];
 
@@ -363,13 +372,7 @@ export const App: React.FC = () => {
       );
     }
 
-    if (activeFilter === "Hôm nay") {
-      const today = new Date().toDateString();
-      list = list.filter((p) => p.date.toDateString() === today);
-    } else if (activeFilter === "Tuần này") {
-      const sevenDaysAgo = Date.now() - 7 * 86400000;
-      list = list.filter((p) => p.date.getTime() >= sevenDaysAgo);
-    } else if (activeFilter === "Yêu thích") {
+    if (activeFilter === "Yêu thích") {
       list = list.filter(
         (p) =>
           favorites.has(String(p.id)) || favorites.has(String(p.messageId))
@@ -378,8 +381,38 @@ export const App: React.FC = () => {
       list = list.filter((p) => p.isCarousel);
     }
 
+    // Áp dụng sắp xếp
+    if (sortBy === "added") {
+      // Đã thêm gần đây: theo messageId giảm dần
+      list.sort((a, b) => b.messageId - a.messageId);
+    } else {
+      // Ngày chụp: theo ngày tháng giảm dần
+      list.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
+
     return list;
-  }, [photos, activeFilter, searchQuery, favorites]);
+  }, [photos, activeFilter, searchQuery, favorites, sortBy]);
+
+  // Tính dải ngày tháng hiển thị dưới tiêu đề "Thư viện" (Ví dụ: "19 thg 8 – 10 thg 9, 2026")
+  const dateRangeText = useMemo(() => {
+    if (filteredPhotos.length === 0) {
+      return "Kho ảnh Telegram";
+    }
+    const dates = filteredPhotos.map((p) => p.date.getTime()).sort((a, b) => a - b);
+    const earliest = new Date(dates[0]);
+    const latest = new Date(dates[dates.length - 1]);
+
+    const formatShort = (d: Date) =>
+      `${d.getDate()} thg ${d.getMonth() + 1}`;
+
+    if (earliest.getFullYear() === latest.getFullYear()) {
+      if (earliest.getMonth() === latest.getMonth() && earliest.getDate() === latest.getDate()) {
+        return `${formatShort(earliest)}, ${earliest.getFullYear()}`;
+      }
+      return `${formatShort(earliest)} – ${formatShort(latest)}, ${latest.getFullYear()}`;
+    }
+    return `${formatShort(earliest)}, ${earliest.getFullYear()} – ${formatShort(latest)}, ${latest.getFullYear()}`;
+  }, [filteredPhotos]);
 
   // Gom nhóm ảnh theo ngày (Apple Photos format)
   const groupedPhotos: DateGroup[] = useMemo(() => {
@@ -413,6 +446,69 @@ export const App: React.FC = () => {
       photos: pList,
     }));
   }, [filteredPhotos]);
+
+  // Toggle chọn 1 ảnh trong Select Mode
+  const handleToggleSelectPhoto = (photo: PhotoItem) => {
+    setSelectedPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photo.messageId) || next.has(photo.id)) {
+        next.delete(photo.messageId);
+        next.delete(photo.id);
+      } else {
+        next.add(photo.messageId);
+      }
+      return next;
+    });
+  };
+
+  // Chọn tất cả / Bỏ chọn tất cả
+  const handleToggleSelectAll = () => {
+    if (selectedPhotoIds.size === filteredPhotos.length) {
+      setSelectedPhotoIds(new Set());
+    } else {
+      setSelectedPhotoIds(new Set(filteredPhotos.map((p) => p.messageId)));
+    }
+  };
+
+  // Yêu thích nhiều ảnh cùng lúc
+  const handleFavoriteBatch = () => {
+    const idStrings = Array.from(selectedPhotoIds).map(String);
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      idStrings.forEach((id) => next.add(id));
+      localStorage.setItem("insta_favorites", JSON.stringify(Array.from(next)));
+      return next;
+    });
+    showToast(`Đã thêm ${idStrings.length} ảnh vào Mục yêu thích ❤️`);
+  };
+
+  // Xóa hàng loạt nhiều ảnh cùng lúc
+  const handleExecuteDeleteBatch = async () => {
+    const idsToDelete = Array.from(selectedPhotoIds).map(Number);
+    if (idsToDelete.length === 0) return;
+
+    setIsDeletingBatch(true);
+    try {
+      // 1. Xóa khỏi IndexedDB
+      await removeMultiplePhotosFromCache(idsToDelete);
+
+      // 2. Cập nhật state UI ngay lập tức
+      const deleteSet = new Set(idsToDelete);
+      setPhotos((prev) => prev.filter((p) => !deleteSet.has(p.messageId)));
+
+      // 3. Xóa trên Kênh Telegram
+      await deleteMultipleTelegramPhotos(config, idsToDelete);
+
+      showToast(`Đã xóa ${idsToDelete.length} ảnh thành công 🗑️`);
+      setIsSelectMode(false);
+      setSelectedPhotoIds(new Set());
+      setIsConfirmDeleteBatchOpen(false);
+    } catch (err: any) {
+      showToast("Lỗi khi xóa ảnh: " + (err.message || "Thử lại sau"));
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  };
 
   const handleSaveConfig = (newCfg: TelegramConfig) => {
     setConfig(newCfg);
@@ -455,7 +551,7 @@ export const App: React.FC = () => {
   // Xóa User Album
   const handleDeleteCurrentAlbum = () => {
     if (!selectedUserAlbum) return;
-    if (window.confirm(`Bạn có chắc chắn muốn xóa album "${selectedUserAlbum.title}"? (Ảnh gốc trên Telegram sẽ không bị xóa)`)) {
+    if (window.confirm(`Bạn có chắc muốn xóa album "${selectedUserAlbum.title}"? (Ảnh gốc trên Telegram không bị xóa)`)) {
       const updated = deleteAlbum(selectedUserAlbum.id);
       setUserAlbums(updated);
       setSelectedUserAlbum(null);
@@ -477,21 +573,25 @@ export const App: React.FC = () => {
     >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 inset-x-0 mx-auto w-fit max-w-[90vw] z-50 px-4 py-2 bg-neutral-900/95 border border-neutral-700/80 backdrop-blur-xl text-white text-xs font-semibold rounded-full shadow-2xl animate-in fade-in duration-200 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed top-20 inset-x-0 mx-auto w-fit max-w-[90vw] z-50 px-5 py-2.5 bg-neutral-900/95 border border-neutral-700/80 backdrop-blur-xl text-white text-sm font-bold rounded-full shadow-2xl animate-in fade-in duration-200 flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Header */}
+      {/* Top Header Mới: Chuẩn Apple Photos iOS 18 (Xóa hẳn thanh segmented control, thay bằng Menu 3 gạch & Nút Chọn to) */}
       <Header
-        photoCount={filteredPhotos.length}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        activeFilter={activeFilter}
-        onFilterChange={(f) => {
-          setActiveFilter(f);
-          if (currentTab !== "library") setCurrentTab("library");
+        dateRangeText={dateRangeText}
+        isSelectMode={isSelectMode}
+        onToggleSelectMode={() => {
+          setIsSelectMode(!isSelectMode);
+          if (isSelectMode) setSelectedPhotoIds(new Set());
         }}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         isDarkMode={isDarkMode}
       />
 
@@ -511,7 +611,7 @@ export const App: React.FC = () => {
           className="overflow-hidden flex items-center justify-center pointer-events-none"
         >
           <div
-            className={`flex items-center gap-2 py-2 text-xs font-semibold ${
+            className={`flex items-center gap-2 py-2 text-sm font-bold ${
               isDarkMode ? "text-neutral-300" : "text-neutral-600"
             }`}
           >
@@ -519,7 +619,7 @@ export const App: React.FC = () => {
               style={{
                 transform: `rotate(${pullDistance * 4}deg)`,
               }}
-              className={`w-4 h-4 text-blue-500 ${
+              className={`w-5 h-5 text-blue-500 ${
                 pullDistance >= 55 || loading ? "animate-spin" : ""
               }`}
             />
@@ -534,24 +634,24 @@ export const App: React.FC = () => {
         {/* Banner Tiến Trình Upload Lên Đám Mây */}
         {uploadProgress && (
           <div
-            className={`mx-4 mt-3 mb-2 p-3.5 rounded-2xl flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top duration-200 border ${
+            className={`mx-4 mt-3 mb-2 p-4 rounded-2xl flex items-center gap-3.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-top duration-200 border ${
               isDarkMode
                 ? "bg-neutral-900/95 border-blue-500/40 text-white"
                 : "bg-white/95 border-blue-400/50 text-neutral-900 shadow-lg"
             }`}
           >
-            <div className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
-              <UploadCloud className="w-5 h-5 animate-pulse" />
+            <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
+              <UploadCloud className="w-6 h-6 animate-pulse" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold truncate">
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="font-bold truncate">
                   Đang sao lưu {uploadProgress.current}/{uploadProgress.total}: {uploadProgress.currentFileName}
                 </span>
-                <span className="font-bold text-blue-500">{uploadProgress.percent}%</span>
+                <span className="font-extrabold text-blue-500">{uploadProgress.percent}%</span>
               </div>
               <div
-                className={`w-full h-1.5 rounded-full overflow-hidden ${
+                className={`w-full h-2 rounded-full overflow-hidden ${
                   isDarkMode ? "bg-neutral-800" : "bg-neutral-200"
                 }`}
               >
@@ -568,39 +668,39 @@ export const App: React.FC = () => {
         {!config.isLoggedIn && (
           <div
             onClick={() => setIsSettingsOpen(true)}
-            className="mx-4 mt-3 mb-2 p-3.5 bg-gradient-to-r from-blue-900/60 to-indigo-900/60 border border-blue-500/40 rounded-2xl flex items-center justify-between cursor-pointer active:scale-98 transition-transform shadow-lg"
+            className="mx-4 mt-3 mb-2 p-4 bg-gradient-to-r from-blue-900/60 to-indigo-900/60 border border-blue-500/40 rounded-2xl flex items-center justify-between cursor-pointer active:scale-98 transition-transform shadow-lg"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-11 h-11 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <div className="text-xs font-bold text-white">Chưa kết nối Kênh Telegram</div>
-                <div className="text-[11px] text-blue-200 mt-0.5">
+                <div className="text-sm font-bold text-white">Chưa kết nối Kênh Telegram</div>
+                <div className="text-xs text-blue-200 mt-0.5">
                   Bấm vào đây để đăng nhập & kết nối kênh sao lưu ảnh
                 </div>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-blue-300 shrink-0" />
+            <ChevronRight className="w-5 h-5 text-blue-300 shrink-0" />
           </div>
         )}
 
         {/* Thông báo lỗi nếu có */}
         {errorMessage && (
           <div
-            className={`mx-4 my-2 p-3 rounded-xl text-xs flex items-center justify-between border ${
+            className={`mx-4 my-2 p-3.5 rounded-xl text-sm flex items-center justify-between border ${
               isDarkMode
                 ? "bg-red-950/70 border-red-800/60 text-red-300"
                 : "bg-red-50 border-red-200 text-red-700"
             }`}
           >
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
               <span>{errorMessage}</span>
             </div>
             <button
               onClick={() => loadPhotos(false)}
-              className="ml-2 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium active:scale-95 shrink-0"
+              className="ml-2 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs active:scale-95 shrink-0"
             >
               Thử lại
             </button>
@@ -612,11 +712,11 @@ export const App: React.FC = () => {
           <>
             {loading && (
               <div
-                className={`flex items-center justify-center py-10 gap-2 text-sm ${
+                className={`flex items-center justify-center py-10 gap-2 text-base font-semibold ${
                   isDarkMode ? "text-neutral-400" : "text-neutral-500"
                 }`}
               >
-                <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
                 <span>Đang tải ảnh từ Telegram...</span>
               </div>
             )}
@@ -626,9 +726,9 @@ export const App: React.FC = () => {
                 <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto mb-3">
                   <Heart className="w-8 h-8 fill-red-500/30" />
                 </div>
-                <h3 className="font-semibold text-base mb-1">Chưa có ảnh yêu thích</h3>
+                <h3 className="font-bold text-lg mb-1">Chưa có ảnh yêu thích</h3>
                 <p
-                  className={`text-xs max-w-xs mx-auto ${
+                  className={`text-sm max-w-xs mx-auto ${
                     isDarkMode ? "text-neutral-400" : "text-neutral-500"
                   }`}
                 >
@@ -641,6 +741,9 @@ export const App: React.FC = () => {
               groups={groupedPhotos}
               onSelectPhoto={(p) => setSelectedPhoto(p)}
               isDarkMode={isDarkMode}
+              isSelectMode={isSelectMode}
+              selectedPhotoIds={selectedPhotoIds}
+              onToggleSelectPhoto={handleToggleSelectPhoto}
             />
           </>
         )}
@@ -650,7 +753,7 @@ export const App: React.FC = () => {
           <div className="p-4 animate-in fade-in duration-200">
             <div className="relative mb-4">
               <Search
-                className={`w-4 h-4 absolute left-3.5 top-3 ${
+                className={`w-5 h-5 absolute left-3.5 top-3.5 ${
                   isDarkMode ? "text-neutral-400" : "text-neutral-500"
                 }`}
               />
@@ -659,7 +762,7 @@ export const App: React.FC = () => {
                 placeholder="Tìm theo tác giả hoặc ghi chú caption..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full rounded-2xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                className={`w-full rounded-2xl pl-11 pr-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
                   isDarkMode
                     ? "bg-neutral-900 border border-neutral-800 text-white placeholder-neutral-500"
                     : "bg-white border border-neutral-300 text-black placeholder-neutral-400 shadow-sm"
@@ -670,13 +773,16 @@ export const App: React.FC = () => {
               groups={groupedPhotos}
               onSelectPhoto={(p) => setSelectedPhoto(p)}
               isDarkMode={isDarkMode}
+              isSelectMode={isSelectMode}
+              selectedPhotoIds={selectedPhotoIds}
+              onToggleSelectPhoto={handleToggleSelectPhoto}
             />
           </div>
         )}
 
         {/* TAB 3: ALBUMS (BỘ SƯU TẬP ALBUM CHUẨN IPHONE MẶC ĐỊNH) */}
         {currentTab === "albums" && (
-          <div className="p-4 animate-in fade-in duration-200 pb-32">
+          <div className="p-4 animate-in fade-in duration-200 pb-36">
             {/* 1. KHI ĐANG MỞ XEM 1 CUSTOM USER ALBUM */}
             {selectedUserAlbum ? (
               <div>
@@ -687,40 +793,40 @@ export const App: React.FC = () => {
                 >
                   <button
                     onClick={() => setSelectedUserAlbum(null)}
-                    className="flex items-center text-blue-500 text-sm font-semibold active:opacity-70 -ml-1 py-1 pr-2"
+                    className="flex items-center text-blue-500 text-base font-bold active:opacity-70 -ml-1 py-1 pr-2"
                   >
-                    <ChevronLeft className="w-5 h-5 mr-0.5" />
+                    <ChevronLeft className="w-6 h-6 mr-0.5" />
                     <span>Tất cả Album</span>
                   </button>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleDeleteCurrentAlbum}
-                      className="p-1.5 text-red-500 hover:text-red-600 active:scale-95 transition-transform"
+                      className="p-2 text-red-500 hover:text-red-600 active:scale-95 transition-transform rounded-full bg-red-500/10"
                       title="Xóa Album"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                     <span
-                      className={`text-xs ${
+                      className={`text-sm font-semibold ${
                         isDarkMode ? "text-neutral-400" : "text-neutral-500"
                       }`}
                     >
-                      {currentAlbumPhotos.length} bức ảnh
+                      {currentAlbumPhotos.length} ảnh
                     </span>
                   </div>
                 </div>
 
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold flex items-center gap-2">
+                    <h2 className="text-2xl font-extrabold flex items-center gap-2">
                       {selectedUserAlbum.title}
                     </h2>
                     <p
-                      className={`text-xs mt-1 flex items-center gap-1.5 ${
+                      className={`text-xs sm:text-sm mt-1 flex items-center gap-1.5 ${
                         isDarkMode ? "text-neutral-400" : "text-neutral-500"
                       }`}
                     >
-                      <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                      <Calendar className="w-4 h-4 text-blue-500" />
                       <span>
                         Tạo ngày:{" "}
                         {new Date(selectedUserAlbum.createdAt).toLocaleDateString("vi-VN", {
@@ -739,19 +845,19 @@ export const App: React.FC = () => {
                         setSelectedPhotoIdsForAlbum(new Set(selectedUserAlbum.photoIds));
                         setIsAddPhotosModalOpen(true);
                       }}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 shadow-md"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1 active:scale-95 shadow-md"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4 stroke-[2.6]" />
                       Thêm ảnh
                     </button>
                     <button
                       onClick={() => albumFileInputRef.current?.click()}
-                      className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 border ${
+                      className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 border ${
                         isDarkMode ? "bg-neutral-800 border-neutral-700 text-neutral-300" : "bg-white border-neutral-300 text-neutral-700 shadow-sm"
                       }`}
                       title="Tải ảnh mới từ máy vào Album này"
                     >
-                      <ImagePlus className="w-4 h-4 text-blue-500" />
+                      <ImagePlus className="w-5 h-5 text-blue-500" />
                     </button>
                   </div>
                 </div>
@@ -769,14 +875,14 @@ export const App: React.FC = () => {
                 {currentAlbumPhotos.length === 0 ? (
                   <div className="p-8 text-center my-8">
                     <div
-                      className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 ${
+                      className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3 ${
                         isDarkMode ? "bg-neutral-800 text-neutral-400" : "bg-neutral-200 text-neutral-600"
                       }`}
                     >
-                      <ImageIcon className="w-7 h-7" />
+                      <ImageIcon className="w-8 h-8" />
                     </div>
-                    <h4 className="font-semibold text-sm mb-1">Album chưa có ảnh</h4>
-                    <p className="text-xs text-neutral-400 max-w-xs mx-auto mb-4">
+                    <h4 className="font-bold text-base mb-1">Album chưa có ảnh</h4>
+                    <p className="text-sm text-neutral-400 max-w-xs mx-auto mb-4">
                       Chạm vào "Thêm ảnh" để chọn từ kho ảnh đã lưu hoặc tải ảnh mới từ máy vào đây!
                     </p>
                     <button
@@ -784,9 +890,9 @@ export const App: React.FC = () => {
                         setSelectedPhotoIdsForAlbum(new Set(selectedUserAlbum.photoIds));
                         setIsAddPhotosModalOpen(true);
                       }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 active:scale-95 shadow-md"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold inline-flex items-center gap-2 active:scale-95 shadow-md"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-4 h-4 stroke-[3]" />
                       Chọn ảnh vào Album
                     </button>
                   </div>
@@ -814,22 +920,22 @@ export const App: React.FC = () => {
               /* 2. DANH SÁCH TẤT CẢ ALBUM (CHUẨN IPHONE PHOTOS) */
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    <Folder className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-2xl font-extrabold flex items-center gap-2">
+                    <Folder className="w-6 h-6 text-blue-500" />
                     Album của tôi
                   </h2>
                   <button
                     onClick={() => setIsCreateAlbumModalOpen(true)}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 shadow-md"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 active:scale-95 shadow-md"
                   >
-                    <FolderPlus className="w-3.5 h-3.5" />
+                    <FolderPlus className="w-4 h-4 stroke-[2.6]" />
                     + Tạo Album
                   </button>
                 </div>
 
                 {/* Danh sách User Custom Albums */}
                 {userAlbums.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="grid grid-cols-2 gap-3.5 mb-6">
                     {userAlbums.map((album) => {
                       const albumItems = getPhotosInAlbum(album, photos);
                       const cover =
@@ -855,18 +961,18 @@ export const App: React.FC = () => {
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               />
                             ) : (
-                              <Folder className="w-12 h-12 text-blue-500/60" />
+                              <Folder className="w-14 h-14 text-blue-500/60" />
                             )}
-                            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white">
+                            <div className="absolute top-2.5 right-2.5 bg-black/70 backdrop-blur-md px-2.5 py-0.5 rounded-full flex items-center gap-1 text-xs font-bold text-white">
                               <span>{album.photoIds.length} ảnh</span>
                             </div>
                           </div>
-                          <div className="p-3">
-                            <h4 className="font-semibold text-sm truncate">
+                          <div className="p-3.5">
+                            <h4 className="font-bold text-base truncate">
                               {album.title}
                             </h4>
                             <p
-                              className={`text-[11px] mt-0.5 ${
+                              className={`text-xs mt-0.5 ${
                                 isDarkMode ? "text-neutral-400" : "text-neutral-500"
                               }`}
                             >
@@ -882,27 +988,27 @@ export const App: React.FC = () => {
                 {userAlbums.length === 0 && (
                   <div
                     onClick={() => setIsCreateAlbumModalOpen(true)}
-                    className={`p-6 rounded-2xl border border-dashed mb-6 text-center cursor-pointer active:scale-98 transition-transform ${
-                      isDarkMode ? "border-neutral-800 bg-neutral-900/40" : "border-neutral-300 bg-white"
+                    className={`p-7 rounded-2xl border border-dashed mb-6 text-center cursor-pointer active:scale-98 transition-transform ${
+                      isDarkMode ? "border-neutral-800 bg-neutral-900/40" : "border-neutral-300 bg-white shadow-sm"
                     }`}
                   >
-                    <FolderPlus className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                    <h4 className="text-sm font-semibold">Chưa có album tùy chỉnh nào</h4>
-                    <p className="text-xs text-neutral-400 mt-0.5">
+                    <FolderPlus className="w-10 h-10 text-blue-500 mx-auto mb-2" />
+                    <h4 className="text-base font-bold">Chưa có album tùy chỉnh nào</h4>
+                    <p className="text-xs sm:text-sm text-neutral-400 mt-1">
                       Chạm vào đây để tạo Album đầu tiên của bạn
                     </p>
                   </div>
                 )}
 
-                {/* Danh mục đặc biệt mặc định */}
+                {/* Danh mục Album mặc định */}
                 <h3
-                  className={`text-sm font-semibold mb-3 ${
-                    isDarkMode ? "text-neutral-300" : "text-neutral-700"
+                  className={`text-base font-bold mb-3 ${
+                    isDarkMode ? "text-neutral-200" : "text-neutral-800"
                   }`}
                 >
                   Mục Album tiện ích
                 </h3>
-                <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="grid grid-cols-2 gap-3.5 mb-6">
                   {/* Mục Yêu Thích */}
                   <div
                     onClick={() => {
@@ -915,10 +1021,10 @@ export const App: React.FC = () => {
                         : "bg-white border-neutral-200 shadow-sm"
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-500 flex items-center justify-center mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-red-500/20 text-red-500 flex items-center justify-center mb-3">
                       <Heart className="w-6 h-6 fill-red-500" />
                     </div>
-                    <h3 className="font-semibold">Yêu thích</h3>
+                    <h3 className="font-bold text-base">Yêu thích</h3>
                     <p
                       className={`text-xs mt-0.5 ${
                         isDarkMode ? "text-neutral-400" : "text-neutral-500"
@@ -940,10 +1046,10 @@ export const App: React.FC = () => {
                         : "bg-white border-neutral-200 shadow-sm"
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-500 flex items-center justify-center mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-purple-500/20 text-purple-500 flex items-center justify-center mb-3">
                       <Layers className="w-6 h-6" />
                     </div>
-                    <h3 className="font-semibold">Carousels</h3>
+                    <h3 className="font-bold text-base">Carousels</h3>
                     <p
                       className={`text-xs mt-0.5 ${
                         isDarkMode ? "text-neutral-400" : "text-neutral-500"
@@ -954,18 +1060,18 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Danh mục Album tự động theo tin nhắn Telegram */}
+                {/* Danh mục Album bài viết */}
                 {postAlbums.length > 0 && (
                   <>
                     <h3
-                      className={`text-sm font-semibold mb-3 ${
-                        isDarkMode ? "text-neutral-300" : "text-neutral-700"
+                      className={`text-base font-bold mb-3 ${
+                        isDarkMode ? "text-neutral-200" : "text-neutral-800"
                       }`}
                     >
                       Album theo bài viết ({postAlbums.length})
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3.5">
                       {postAlbums.map((album) => (
                         <div
                           key={album.id}
@@ -982,17 +1088,17 @@ export const App: React.FC = () => {
                               alt=""
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
-                            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white">
-                              <Layers className="w-3 h-3 text-blue-400" />
+                            <div className="absolute top-2.5 right-2.5 bg-black/70 backdrop-blur-md px-2.5 py-0.5 rounded-full flex items-center gap-1 text-xs font-bold text-white">
+                              <Layers className="w-3.5 h-3.5 text-blue-400" />
                               <span>{album.photos.length}</span>
                             </div>
                           </div>
-                          <div className="p-3">
-                            <h4 className="font-semibold text-sm truncate">
+                          <div className="p-3.5">
+                            <h4 className="font-bold text-sm truncate">
                               {album.title}
                             </h4>
                             <p
-                              className={`text-[11px] mt-0.5 ${
+                              className={`text-xs mt-0.5 ${
                                 isDarkMode ? "text-neutral-400" : "text-neutral-500"
                               }`}
                             >
@@ -1014,14 +1120,14 @@ export const App: React.FC = () => {
 
         {/* TAB 4: KỶ NIỆM (MEMORIES) */}
         {currentTab === "memories" && (
-          <div className="p-4 space-y-6 animate-in fade-in duration-200 pb-32">
+          <div className="p-4 space-y-6 animate-in fade-in duration-200 pb-36">
             <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
+              <h2 className="text-2xl font-extrabold flex items-center gap-2">
+                <Sparkles className="w-6 h-6 text-purple-500" />
                 Dành Cho Bạn
               </h2>
               <p
-                className={`text-xs mt-0.5 ${
+                className={`text-sm mt-0.5 ${
                   isDarkMode ? "text-neutral-400" : "text-neutral-500"
                 }`}
               >
@@ -1041,13 +1147,13 @@ export const App: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-5">
-                  <span className="px-2.5 py-0.5 bg-purple-600/90 backdrop-blur-md rounded-full text-[10px] font-bold uppercase tracking-wider text-white w-fit mb-2">
+                  <span className="px-3 py-1 bg-purple-600/90 backdrop-blur-md rounded-full text-xs font-extrabold uppercase tracking-wider text-white w-fit mb-2">
                     Khoảnh khắc nổi bật
                   </span>
-                  <h3 className="text-lg font-bold text-white leading-snug">
+                  <h3 className="text-xl font-bold text-white leading-snug">
                     {photos[0].caption ? photos[0].caption.slice(0, 50) + "..." : "Ảnh mới nhất từ kho Telegram"}
                   </h3>
-                  <p className="text-xs text-neutral-300 mt-1">
+                  <p className="text-xs sm:text-sm text-neutral-300 mt-1">
                     @{photos[0].author || "Telegram"} • {photos[0].date.toLocaleDateString("vi-VN")}
                   </p>
                 </div>
@@ -1058,14 +1164,14 @@ export const App: React.FC = () => {
             {featuredCreators.length > 0 && (
               <div>
                 <h3
-                  className={`text-sm font-semibold mb-3 flex items-center gap-1.5 ${
+                  className={`text-base font-bold mb-3 flex items-center gap-1.5 ${
                     isDarkMode ? "text-neutral-200" : "text-neutral-800"
                   }`}
                 >
-                  <User className="w-4 h-4 text-blue-500" />
+                  <User className="w-5 h-5 text-blue-500" />
                   Tác giả lưu trữ nhiều nhất
                 </h3>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+                <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-none">
                   {featuredCreators.map((creator) => (
                     <div
                       key={creator.author}
@@ -1073,20 +1179,20 @@ export const App: React.FC = () => {
                         setSearchQuery(creator.author);
                         setCurrentTab("search");
                       }}
-                      className="flex flex-col items-center shrink-0 w-20 cursor-pointer active:scale-95 transition-transform"
+                      className="flex flex-col items-center shrink-0 w-22 cursor-pointer active:scale-95 transition-transform"
                     >
-                      <div className="w-16 h-16 rounded-full overflow-hidden p-0.5 bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 mb-1.5 shadow-md">
+                      <div className="w-18 h-18 rounded-full overflow-hidden p-0.5 bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 mb-1.5 shadow-md">
                         <img
                           src={creator.cover}
                           alt=""
                           className="w-full h-full object-cover rounded-full bg-neutral-800"
                         />
                       </div>
-                      <p className="text-xs font-semibold truncate w-full text-center">
+                      <p className="text-xs sm:text-sm font-bold truncate w-full text-center">
                         @{creator.author}
                       </p>
                       <span
-                        className={`text-[10px] ${
+                        className={`text-xs ${
                           isDarkMode ? "text-neutral-400" : "text-neutral-500"
                         }`}
                       >
@@ -1109,14 +1215,14 @@ export const App: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-sm rounded-3xl p-5 shadow-2xl border ${
+            className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl border ${
               isDarkMode
                 ? "bg-[#1c1c1e] text-white border-neutral-800"
                 : "bg-white text-neutral-900 border-neutral-300"
             }`}
           >
-            <h3 className="text-base font-bold text-center mb-1">Album mới</h3>
-            <p className="text-xs text-neutral-400 text-center mb-4">
+            <h3 className="text-lg font-bold text-center mb-1">Album mới</h3>
+            <p className="text-sm text-neutral-400 text-center mb-4">
               Nhập tên cho album này
             </p>
 
@@ -1127,18 +1233,18 @@ export const App: React.FC = () => {
                 placeholder="Ví dụ: Du lịch, Gia đình, Bạn bè..."
                 value={albumNameInput}
                 onChange={(e) => setAlbumNameInput(e.target.value)}
-                className={`w-full rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isDarkMode
                     ? "bg-neutral-800 border border-neutral-700 text-white"
                     : "bg-neutral-100 border border-neutral-300 text-black"
                 }`}
               />
 
-              <div className="flex gap-2">
+              <div className="flex gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsCreateAlbumModalOpen(false)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold ${
+                  className={`flex-1 py-3 rounded-xl text-sm font-bold ${
                     isDarkMode ? "bg-neutral-800 text-neutral-300" : "bg-neutral-200 text-neutral-700"
                   }`}
                 >
@@ -1147,7 +1253,7 @@ export const App: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!albumNameInput.trim()}
-                  className="flex-1 py-2.5 bg-blue-600 disabled:opacity-50 text-white font-semibold rounded-xl text-xs active:scale-98 transition-transform"
+                  className="flex-1 py-3 bg-blue-600 disabled:opacity-50 text-white font-bold rounded-xl text-sm active:scale-98 transition-transform shadow-md"
                 >
                   Lưu
                 </button>
@@ -1171,16 +1277,16 @@ export const App: React.FC = () => {
                 : "bg-white text-neutral-900 border-neutral-300"
             }`}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-3">
+            <div className="flex items-center justify-between pb-3.5 border-b border-neutral-800 mb-3">
               <div>
-                <h3 className="text-base font-bold">Thêm ảnh vào Album</h3>
-                <p className="text-xs text-neutral-400">
+                <h3 className="text-lg font-bold">Thêm ảnh vào Album</h3>
+                <p className="text-xs sm:text-sm text-neutral-400">
                   Đã chọn {selectedPhotoIdsForAlbum.size} ảnh
                 </p>
               </div>
               <button
                 onClick={handleConfirmAddPhotosToAlbum}
-                className="px-4 py-1.5 bg-blue-600 text-white font-semibold rounded-xl text-xs active:scale-95 shadow-md"
+                className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl text-sm active:scale-95 shadow-md"
               >
                 Xong
               </button>
@@ -1262,7 +1368,7 @@ export const App: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm space-y-2 animate-in slide-in-from-bottom duration-250"
+            className="w-full max-w-sm space-y-2.5 animate-in slide-in-from-bottom duration-250"
           >
             <div
               className={`rounded-2xl overflow-hidden divide-y backdrop-blur-2xl shadow-2xl ${
@@ -1271,8 +1377,8 @@ export const App: React.FC = () => {
                   : "bg-white/95 divide-neutral-200 text-neutral-900"
               }`}
             >
-              <div className="py-2.5 px-4 text-center">
-                <p className="text-xs font-semibold text-neutral-400">
+              <div className="py-3 px-4 text-center">
+                <p className="text-xs sm:text-sm font-bold text-neutral-400">
                   Thêm ảnh vào Kho lưu trữ Telegram
                 </p>
               </div>
@@ -1283,15 +1389,15 @@ export const App: React.FC = () => {
                   setIsUploadMenuOpen(false);
                   fileInputRef.current?.click();
                 }}
-                className="w-full py-3.5 px-4 flex items-center justify-between active:opacity-70 transition-opacity"
+                className="w-full py-4 px-5 flex items-center justify-between active:opacity-70 transition-opacity"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
-                    <ImageIcon className="w-5 h-5" />
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
+                    <ImageIcon className="w-6 h-6" />
                   </div>
-                  <span className="text-sm font-semibold">Chọn từ Thư viện ảnh</span>
+                  <span className="text-base font-bold">Chọn từ Thư viện ảnh</span>
                 </div>
-                <ChevronRight className="w-4 h-4 text-neutral-400" />
+                <ChevronRight className="w-5 h-5 text-neutral-400" />
               </button>
 
               <button
@@ -1300,22 +1406,22 @@ export const App: React.FC = () => {
                   setIsUploadMenuOpen(false);
                   cameraInputRef.current?.click();
                 }}
-                className="w-full py-3.5 px-4 flex items-center justify-between active:opacity-70 transition-opacity"
+                className="w-full py-4 px-5 flex items-center justify-between active:opacity-70 transition-opacity"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-500 flex items-center justify-center">
-                    <Camera className="w-5 h-5" />
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-500 flex items-center justify-center">
+                    <Camera className="w-6 h-6" />
                   </div>
-                  <span className="text-sm font-semibold">Chụp ảnh mới (Camera)</span>
+                  <span className="text-base font-bold">Chụp ảnh mới (Camera)</span>
                 </div>
-                <ChevronRight className="w-4 h-4 text-neutral-400" />
+                <ChevronRight className="w-5 h-5 text-neutral-400" />
               </button>
             </div>
 
             <button
               type="button"
               onClick={() => setIsUploadMenuOpen(false)}
-              className={`w-full py-3.5 rounded-2xl font-bold text-sm backdrop-blur-2xl shadow-xl transition-all active:scale-98 ${
+              className={`w-full py-4 rounded-2xl font-extrabold text-base backdrop-blur-2xl shadow-xl transition-all active:scale-98 ${
                 isDarkMode
                   ? "bg-[#2c2c2e]/95 text-white"
                   : "bg-white/95 text-blue-600"
@@ -1327,14 +1433,120 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* iOS Bottom TabBar */}
-      <TabBar
-        currentTab={currentTab}
-        onTabChange={setCurrentTab}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenAddPhoto={handleTriggerUpload}
-        isDarkMode={isDarkMode}
-      />
+      {/* THANH ĐIỀU KHIỂN KHI ĐANG Ở CHẾ ĐỘ CHỌN (SELECT MODE ACTION BAR) */}
+      {isSelectMode ? (
+        <div
+          style={{
+            paddingBottom: "max(calc(var(--sab) - 6px), 14px)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
+          }}
+          className={`fixed inset-x-0 bottom-0 z-40 px-6 py-3.5 flex items-center justify-between border-t transition-all duration-200 animate-in slide-in-from-bottom ${
+            isDarkMode
+              ? "bg-[#18181c]/90 border-white/15 text-white"
+              : "bg-white/90 border-black/10 text-neutral-900 shadow-2xl"
+          }`}
+        >
+          {/* Nút Chọn tất cả / Bỏ chọn */}
+          <button
+            type="button"
+            onClick={handleToggleSelectAll}
+            className="text-sm font-bold text-blue-500 active:opacity-70"
+          >
+            {selectedPhotoIds.size === filteredPhotos.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+          </button>
+
+          {/* Số lượng đã chọn */}
+          <div className="text-center">
+            <span className="text-sm font-extrabold">
+              {selectedPhotoIds.size > 0 ? `Đã chọn ${selectedPhotoIds.size} ảnh` : "Chọn ảnh"}
+            </span>
+          </div>
+
+          {/* Cụm nút thao tác (Yêu thích & Thùng rác Xóa) */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={selectedPhotoIds.size === 0}
+              onClick={handleFavoriteBatch}
+              className="p-2.5 rounded-full bg-red-500/15 text-red-500 disabled:opacity-40 active:scale-95 transition-transform"
+              title="Yêu thích các ảnh đã chọn"
+            >
+              <Heart className="w-5 h-5 fill-red-500/40" />
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedPhotoIds.size === 0}
+              onClick={() => setIsConfirmDeleteBatchOpen(true)}
+              className="p-2.5 rounded-full bg-red-600 text-white disabled:opacity-40 active:scale-95 transition-transform shadow-md"
+              title="Xóa các ảnh đã chọn"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* iOS Bottom TabBar bình thường */
+        <TabBar
+          currentTab={currentTab}
+          onTabChange={setCurrentTab}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenAddPhoto={handleTriggerUpload}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {/* ACTION SHEET XÁC NHẬN XÓA HÀNG LOẠT NHIỀU ẢNH */}
+      {isConfirmDeleteBatchOpen && (
+        <div
+          onClick={() => {
+            if (!isDeletingBatch) setIsConfirmDeleteBatchOpen(false);
+          }}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-[#1c1c1e] border border-neutral-800 rounded-3xl overflow-hidden text-center shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-200"
+          >
+            <div>
+              <h4 className="text-lg font-bold text-white">
+                Xóa {selectedPhotoIds.size} bức ảnh?
+              </h4>
+              <p className="text-xs sm:text-sm text-neutral-400 mt-1 leading-relaxed px-2">
+                Các ảnh đã chọn sẽ bị xóa vĩnh viễn khỏi thiết bị và Kênh Telegram của bạn.
+              </p>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingBatch}
+                onClick={handleExecuteDeleteBatch}
+                className="w-full py-3.5 bg-red-600 text-white font-extrabold rounded-2xl text-base flex items-center justify-center gap-2 active:bg-red-700 transition-colors disabled:opacity-50 shadow-lg"
+              >
+                {isDeletingBatch ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span>Đang xóa {selectedPhotoIds.size} ảnh...</span>
+                  </>
+                ) : (
+                  `Xóa ${selectedPhotoIds.size} ảnh vĩnh viễn`
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeletingBatch}
+                onClick={() => setIsConfirmDeleteBatchOpen(false)}
+                className="w-full py-3.5 bg-neutral-800 text-white font-bold rounded-2xl text-base active:bg-neutral-700 transition-colors"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Photo Viewer Modal */}
       {selectedPhoto && (

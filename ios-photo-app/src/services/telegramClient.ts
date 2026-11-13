@@ -475,3 +475,51 @@ export async function deleteTelegramPhoto(
 
   return deleted;
 }
+
+/**
+ * Xóa nhiều ảnh vĩnh viễn trên Kênh Telegram cùng lúc
+ */
+export async function deleteMultipleTelegramPhotos(
+  config: TelegramConfig,
+  messageIds: number[]
+): Promise<boolean> {
+  if (messageIds.length === 0) return true;
+  let deleted = false;
+
+  if (config.sessionString || config.isLoggedIn) {
+    try {
+      const client = await initTelegramClient(config);
+      let targetPeer: any = config.channelId;
+      try {
+        targetPeer = await client.getEntity(config.channelId);
+      } catch {
+        try {
+          targetPeer = await client.getEntity(BigInt(config.channelId));
+        } catch {
+          targetPeer = config.channelId;
+        }
+      }
+
+      await client.deleteMessages(targetPeer, messageIds, { revoke: true });
+      deleted = true;
+    } catch (err) {
+      console.warn("Lỗi xóa nhiều ảnh qua MTProto:", err);
+    }
+  }
+
+  // Dự phòng qua Telegram Bot API nếu có
+  if (!deleted && config.botToken && config.channelId) {
+    try {
+      for (const mId of messageIds) {
+        await fetch(
+          `https://api.telegram.org/bot${config.botToken}/deleteMessage?chat_id=${config.channelId}&message_id=${mId}`
+        );
+      }
+      deleted = true;
+    } catch (err) {
+      console.warn("Lỗi xóa ảnh qua Bot API:", err);
+    }
+  }
+
+  return deleted;
+}

@@ -28,20 +28,20 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div
       style={{
-        paddingBottom: "max(calc(var(--sab) - 14px), 8px)",
+        paddingBottom: "max(calc(var(--sab) - 10px), 12px)",
       }}
-      className="fixed inset-x-0 bottom-0 z-30 pointer-events-none px-3 flex items-end justify-center gap-2"
+      className="fixed inset-x-0 bottom-0 z-30 pointer-events-none px-4 flex items-end justify-center gap-3"
     >
-      {/* Viên nang lớn chứa các Tab chính với hiệu ứng mờ kính (Frosted Glass Blur) */}
+      {/* Viên nang lớn chứa các Tab chính với hiệu ứng mờ kính (Kích thước phóng to chuẩn Apple) */}
       <nav
         style={{
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          backdropFilter: "blur(28px)",
+          WebkitBackdropFilter: "blur(28px)",
         }}
-        className={`pointer-events-auto flex items-center rounded-full p-1 min-h-[56px] transition-colors duration-200 ${
+        className={`pointer-events-auto flex items-center rounded-full p-1.5 min-h-[64px] transition-all duration-200 ${
           isDarkMode
-            ? "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80"
-            : "bg-white/85 border border-black/10 shadow-xl shadow-black/10"
+            ? "bg-[#18181c]/85 border border-white/15 shadow-2xl shadow-black/90"
+            : "bg-white/90 border border-black/10 shadow-2xl shadow-black/15"
         }`}
       >
         {tabs.map((tab) => {
@@ -60,32 +60,32 @@ export const TabBar: React.FC<TabBarProps> = ({
             <button
               key={tab.id}
               onClick={handleClick}
-              className={`flex flex-col items-center justify-center px-3.5 py-1.5 min-w-[64px] rounded-full transition-all duration-200 active:scale-95 ${
+              className={`flex flex-col items-center justify-center px-4 py-2 min-w-[70px] rounded-full transition-all duration-200 active:scale-95 ${
                 isActive
                   ? isDarkMode
-                    ? "bg-[#2c2c2e]/90 border border-white/15 text-[#ff375f] shadow-sm"
-                    : "bg-neutral-200/90 border border-black/10 text-[#ff375f] shadow-sm"
+                    ? "bg-[#2c2c2e]/95 border border-white/20 text-[#ff375f] shadow-md"
+                    : "bg-neutral-200/90 border border-black/10 text-[#ff375f] shadow-md"
                   : isDarkMode
-                  ? "text-white hover:text-neutral-200 active:opacity-70"
+                  ? "text-neutral-300 hover:text-white active:opacity-70"
                   : "text-neutral-700 hover:text-black active:opacity-70"
               }`}
             >
               <Icon
-                className={`w-5 h-5 mb-0.5 transition-transform duration-200 ${
+                className={`w-6 h-6 mb-1 transition-transform duration-200 ${
                   isActive
-                    ? "text-[#ff375f] stroke-[2.4]"
+                    ? "text-[#ff375f] stroke-[2.6]"
                     : isDarkMode
-                    ? "text-white stroke-[2]"
-                    : "text-neutral-700 stroke-[2]"
+                    ? "text-white stroke-[2.2]"
+                    : "text-neutral-800 stroke-[2.2]"
                 }`}
               />
               <span
-                className={`text-[11px] tracking-tight leading-tight ${
+                className={`text-xs tracking-tight leading-tight ${
                   isActive
-                    ? "font-bold text-[#ff375f]"
+                    ? "font-extrabold text-[#ff375f]"
                     : isDarkMode
-                    ? "font-semibold text-white"
-                    : "font-semibold text-neutral-800"
+                    ? "font-bold text-white"
+                    : "font-bold text-neutral-800"
                 }`}
               >
                 {tab.label}
@@ -95,50 +95,50 @@ export const TabBar: React.FC<TabBarProps> = ({
         })}
       </nav>
 
-      {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) đồng bộ style và thẳng hàng */}
-      <div className="flex flex-col items-center gap-2 pointer-events-none">
-        {/* Nút Thêm ảnh (+) style kính chuẩn iOS */}
+      {/* Cột dọc chứa nút Thêm (+) và nút Tìm kiếm (Search) phóng to dễ chạm */}
+      <div className="flex flex-col items-center gap-2.5 pointer-events-none">
+        {/* Nút Thêm ảnh (+) to đẹp dễ bấm */}
         <button
           onClick={onOpenAddPhoto}
           style={{
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
           }}
-          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 ${
+          className={`pointer-events-auto w-[62px] h-[62px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
             isDarkMode
-              ? "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80 text-white hover:text-neutral-200"
-              : "bg-white/85 border border-black/10 shadow-xl shadow-black/10 text-neutral-800 hover:text-black"
+              ? "bg-[#18181c]/85 border-white/15 shadow-2xl shadow-black/90 text-white hover:text-neutral-200"
+              : "bg-white/90 border-black/10 shadow-2xl shadow-black/15 text-neutral-900 hover:text-black"
           }`}
           title="Tải ảnh mới lên Telegram"
         >
-          <Plus className="w-6 h-6 stroke-[2.4]" />
+          <Plus className="w-7 h-7 stroke-[2.6]" />
         </button>
 
-        {/* Nút Tìm kiếm hình tròn riêng biệt với hiệu ứng mờ kính */}
+        {/* Nút Tìm kiếm hình tròn to */}
         <button
           onClick={() => onTabChange("search")}
           style={{
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
           }}
-          className={`pointer-events-auto w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 ${
+          className={`pointer-events-auto w-[62px] h-[62px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 shrink-0 border ${
             isDarkMode
               ? isSearchActive
-                ? "bg-[#2c2c2e]/90 border border-[#ff375f]/50 text-[#ff375f] shadow-2xl shadow-black/80"
-                : "bg-[#18181c]/80 border border-white/10 shadow-2xl shadow-black/80 text-white hover:text-neutral-200"
+                ? "bg-[#2c2c2e]/95 border-[#ff375f]/60 text-[#ff375f] shadow-2xl shadow-black/90"
+                : "bg-[#18181c]/85 border-white/15 shadow-2xl shadow-black/90 text-white hover:text-neutral-200"
               : isSearchActive
-              ? "bg-neutral-200/90 border border-[#ff375f]/50 text-[#ff375f] shadow-xl shadow-black/10"
-              : "bg-white/85 border border-black/10 shadow-xl shadow-black/10 text-neutral-800 hover:text-black"
+              ? "bg-neutral-200/95 border-[#ff375f]/60 text-[#ff375f] shadow-2xl shadow-black/15"
+              : "bg-white/90 border-black/10 shadow-2xl shadow-black/15 text-neutral-900 hover:text-black"
           }`}
           title="Tìm kiếm"
         >
           <Search
-            className={`w-6 h-6 transition-transform duration-200 ${
+            className={`w-7 h-7 transition-transform duration-200 ${
               isSearchActive
                 ? "text-[#ff375f] stroke-[2.8]"
                 : isDarkMode
                 ? "text-white stroke-[2.4]"
-                : "text-neutral-700 stroke-[2.4]"
+                : "text-neutral-800 stroke-[2.4]"
             }`}
           />
         </button>

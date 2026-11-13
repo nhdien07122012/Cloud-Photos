@@ -298,6 +298,37 @@ export async function removePhotoFromCache(messageId: number): Promise<void> {
 }
 
 /**
+ * Xóa nhiều ảnh cùng lúc khỏi IndexedDB và giải phóng RAM
+ */
+export async function removeMultiplePhotosFromCache(messageIds: number[]): Promise<void> {
+  for (const id of messageIds) {
+    const objUrl = objectUrlMap.get(id);
+    if (objUrl) {
+      URL.revokeObjectURL(objUrl);
+      objectUrlMap.delete(id);
+    }
+    const hdUrl = hdUrlMap.get(id);
+    if (hdUrl) {
+      URL.revokeObjectURL(hdUrl);
+      hdUrlMap.delete(id);
+    }
+  }
+
+  try {
+    const db = await openDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      messageIds.forEach((id) => store.delete(id));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn("Lỗi xóa nhiều ảnh khỏi IndexedDB:", e);
+  }
+}
+
+/**
  * Xóa toàn bộ bộ nhớ đệm ảnh
  */
 export async function clearPhotoCache(): Promise<void> {
