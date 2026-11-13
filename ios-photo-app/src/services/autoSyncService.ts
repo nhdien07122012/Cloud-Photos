@@ -164,21 +164,26 @@ export async function runAutoSync(
       };
     }
 
-    // 4. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh)
+    // 4. Lần lượt đọc data và tải từng ảnh lên Telegram (tối đa lô 12 ảnh mỗi lượt)
     const filesToUpload: File[] = [];
     const idsToMark: string[] = [];
     const batch = unsynced.slice(0, 12);
+    const remaining = unsynced.length - batch.length;
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
       if (onProgress) {
         onProgress(i + 1, batch.length, `Đang chuẩn bị ảnh ${i + 1}/${batch.length}...`);
       }
-      const dataRes = await PhotoSync.getPhotoData({ id: item.id });
-      if (dataRes.base64) {
-        const file = base64ToFile(dataRes.base64, dataRes.filename);
-        filesToUpload.push(file);
-        idsToMark.push(item.id);
+      try {
+        const dataRes = await PhotoSync.getPhotoData({ id: item.id });
+        if (dataRes.base64) {
+          const file = base64ToFile(dataRes.base64, dataRes.filename);
+          filesToUpload.push(file);
+          idsToMark.push(item.id);
+        }
+      } catch (photoErr) {
+        console.warn(`Bỏ qua ảnh ${item.id} do lỗi đọc:`, photoErr);
       }
     }
 
@@ -202,11 +207,12 @@ export async function runAutoSync(
     idsToMark.forEach((id) => syncedIds.add(id));
     saveSyncedDeviceIds(syncedIds);
 
+    const extraMsg = remaining > 0 ? ` (Còn ${remaining} ảnh sẽ tiếp tục đồng bộ)` : "";
     return {
       success: true,
       syncedCount: uploadedPhotos.length,
       isLimited,
-      message: `Đã tự động sao lưu ${uploadedPhotos.length} ảnh mới từ iPhone lên Telegram!`,
+      message: `Đã tự động sao lưu ${uploadedPhotos.length} ảnh mới từ iPhone lên Telegram!${extraMsg}`,
       newUploadedPhotos: uploadedPhotos,
     };
   } catch (err: any) {

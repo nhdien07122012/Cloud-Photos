@@ -45,6 +45,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 /**
+ * Custom ViewController subclassing CAPBridgeViewController
+ * Ensures PhotoSyncPlugin is actively registered when Capacitor bridge initializes
+ */
+@objc(ViewController)
+public class ViewController: CAPBridgeViewController {
+    override open func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        bridge?.registerPluginInstance(PhotoSyncPlugin())
+    }
+}
+
+/**
  * PhotoSyncPlugin - Tự động đồng bộ và đọc ảnh từ Thư viện ảnh iPhone (Camera Roll)
  * Cho phép sao lưu ngầm phong cách Google Photos lên Telegram với quyền ReadWrite đầy đủ
  */
@@ -110,11 +122,13 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
                 statusString = "unknown"
             }
 
-            call.resolve([
-                "status": statusString,
-                "granted": (status == .authorized || status == .limited),
-                "isFullAccess": (status == .authorized)
-            ])
+            DispatchQueue.main.async {
+                call.resolve([
+                    "status": statusString,
+                    "granted": (status == .authorized || status == .limited),
+                    "isFullAccess": (status == .authorized)
+                ])
+            }
         }
 
         if #available(iOS 14, *) {
@@ -143,7 +157,8 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func presentLimitedPicker(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             if #available(iOS 14, *) {
-                if let rootVC = self.bridge?.viewController {
+                let vc = self.bridge?.viewController ?? UIApplication.shared.windows.first?.rootViewController
+                if let rootVC = vc {
                     PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: rootVC)
                     call.resolve(["success": true])
                     return
@@ -204,18 +219,46 @@ public class PhotoSyncPlugin: CAPPlugin, CAPBridgedPlugin {
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
 
-        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-            guard let data = data else {
-                call.reject("Không thể đọc dữ liệu ảnh")
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+            if let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool, isDegraded {
                 return
             }
-            let base64 = data.base64EncodedString()
-            let filename = (asset.value(forKey: "filename") as? String) ?? "photo_\(Int(Date().timeIntervalSince1970)).jpg"
-            call.resolve([
-                "base64": base64,
-                "filename": filename,
-                "size": data.count
-            ])
+            if let error = info?[PHImageErrorKey] as? Error {
+                call.reject("Lỗi đọc ảnh từ iPhone: \(error.localizedDescription)")
+                return
+            }
+            guard let rawData = data else {
+                call.reject("Không thể đọc dữ liệu ảnh từ iPhone")
+                return
+            }
+
+            // Chuyển đổi định dạng JPEG tối ưu dung lượng và tương thích hiển thị trên mọi nền tảng
+            var finalData = rawData
+            var finalFilename = "photo_\(Int(Date().timeIntervalSince1970)).jpg"
+
+            let resources = PHAssetResource.assetResources(for: asset)
+            if let origName = resources.first?.originalFilename {
+                finalFilename = origName
+            }
+
+            if let image = UIImage(data: rawData) {
+                if let jpeg = image.jpegData(compressionQuality: 0.88) {
+                    finalData = jpeg
+                    let ext = (finalFilename as NSString).pathExtension.lowercased()
+                    if ext == "heic" || ext == "heif" || ext.isEmpty {
+                        finalFilename = (finalFilename as NSString).deletingPathExtension + ".jpg"
+                    }
+                }
+            }
+
+            let base64 = finalData.base64EncodedString()
+            DispatchQueue.main.async {
+                call.resolve([
+                    "base64": base64,
+                    "filename": finalFilename,
+                    "size": finalData.count
+                ])
+            }
         }
     }
 }

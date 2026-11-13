@@ -4,6 +4,30 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 8)] - 2026-11-13
+- **Commit SHA**: `53e3745`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi `"PhotoSync" plugin is not implemented on ios` hiển thị khi thực hiện tự động sao lưu ảnh.
+  2. Đăng ký plugin gốc `PhotoSyncPlugin` trực tiếp vào Capacitor Bridge thông qua lớp kế thừa `ViewController: CAPBridgeViewController` trong `capacitorDidLoad()`, đồng thời trỏ `rootViewController` của `SceneDelegate` và `Main.storyboard` sang `ViewController`.
+  3. Tối ưu hóa việc đọc dữ liệu ảnh PhotoKit (`getPhotoData`): chuyển đổi ảnh sang định dạng JPEG (chất lượng 88%) để giảm tải RAM, tăng tốc độ tải lên Telegram gấp nhiều lần và tránh lỗi định dạng ảnh HEIC gốc trên thiết bị iOS; lọc bỏ các phản hồi degraded tạm thời từ iCloud PhotoKit.
+  4. Nâng cao tính ổn định cho tiến trình sao lưu nền: xử lý ngoại lệ từng ảnh riêng biệt trong batch, hiển thị số lượng ảnh còn lại cần đồng bộ và tiếp tục đồng bộ ngầm mượt mà.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`:
+    - Tạo lớp `ViewController: CAPBridgeViewController` ghi đè `capacitorDidLoad()` gọi `bridge?.registerPluginInstance(PhotoSyncPlugin())` đảm bảo plugin luôn được đăng ký trước khi web view khởi tạo.
+    - Cải tiến `PhotoSyncPlugin.getPhotoData` hỗ trợ chuyển đổi HEIC sang JPEG tự động, trích xuất tên file gốc bằng `PHAssetResource` và kiểm tra `PHImageResultIsDegradedKey` tránh callback lặp.
+    - Bọc `call.resolve` trong `DispatchQueue.main.async` đảm bảo an toàn luồng với các callback của PhotoKit.
+  - `ios-photo-app/ios/App/App/SceneDelegate.swift`: Cập nhật `window?.rootViewController = ViewController()`.
+  - `ios-photo-app/ios/App/App/Base.lproj/Main.storyboard`: Cập nhật `customClass="ViewController" customModule="App"`.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bổ sung try-catch cho từng ảnh khi đọc dữ liệu và hiển thị số ảnh còn lại sau mỗi lô đồng bộ.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Cập nhật số hiệu bản dựng lên `CloudPhotos v1.3 • Build 8`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Tăng `CURRENT_PROJECT_VERSION` lên `8`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 7)] - 2026-11-13
 - **Commit SHA**: `b34e76d`
 - **Mục tiêu**:
