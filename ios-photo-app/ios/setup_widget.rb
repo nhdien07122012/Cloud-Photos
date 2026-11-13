@@ -13,7 +13,7 @@ if widget_target
   puts "BackupWidget target already exists. Skipping target creation."
 else
   puts "Creating BackupWidget app_extension target..."
-  widget_target = project.new_target(:app_extension, 'BackupWidget', :ios, '16.1')
+  widget_target = project.new_target(:app_extension, 'BackupWidget', :ios, '16.2')
   
   widget_target.build_configurations.each do |config|
     config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.diennguyen.cloudphotos.BackupWidget'
@@ -21,7 +21,7 @@ else
     config.build_settings['PRODUCT_NAME'] = 'BackupWidget'
     config.build_settings['SWIFT_VERSION'] = '5.0'
     config.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'
-    config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
+    config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.2'
     config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'YES'
     config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
     config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'

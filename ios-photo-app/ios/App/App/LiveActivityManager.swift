@@ -43,7 +43,7 @@ import ActivityKit
         beginBackgroundExecution()
 
         #if canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else {
                 print("[LiveActivity] Live Activities đang bị tắt trong Cài đặt iPhone của người dùng")
                 return false
@@ -82,7 +82,7 @@ import ActivityKit
 
     @objc public func updateActivity(current: Int, total: Int, currentFileName: String, statusText: String) {
         #if canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             let progress = total > 0 ? min(1.0, max(0.0, Double(current) / Double(total))) : 0.0
             let isDone = (current >= total && total > 0)
             let state = BackupActivityAttributes.ContentState(
@@ -107,7 +107,7 @@ import ActivityKit
 
     @objc public func endActivity(finalMessage: String) {
         #if canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             Task {
                 for activity in Activity<BackupActivityAttributes>.activities {
                     let total = activity.content.state.total
@@ -136,7 +136,7 @@ import ActivityKit
 
     private func endExistingActivities() {
         #if canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
+        if #available(iOS 16.2, *) {
             Task {
                 for activity in Activity<BackupActivityAttributes>.activities {
                     await activity.end(dismissalPolicy: .immediate)
