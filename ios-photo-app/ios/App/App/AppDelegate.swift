@@ -191,7 +191,7 @@ public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getRecentPhotos(_ call: CAPPluginCall) {
-        let limit = call.getInt("limit") ?? 100
+        let limit = call.getInt("limit") ?? 1000
         let status: PHAuthorizationStatus
         if #available(iOS 14, *) {
             status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -208,18 +208,26 @@ public class PhotoSync: CAPPlugin, CAPBridgedPlugin {
         options.predicate = NSPredicate(format: "mediaType == %d AND isHidden == NO", PHAssetMediaType.image.rawValue)
         options.fetchLimit = limit
 
-        // Truy vấn CHỈ TỪ Album Camera Roll / Recents (loại bỏ hoàn toàn ảnh Đã xóa gần đây và Thùng rác)
-        let userLibrary = PHAssetCollection.fetchAssetCollections(
-            with: .smartAlbum,
-            subtype: .smartAlbumUserLibrary,
-            options: nil
-        ).firstObject
-
-        let assets: PHFetchResult<PHAsset>
-        if let library = userLibrary {
-            assets = PHAsset.fetchAssets(in: library, options: options)
-        } else {
+        var assets: PHFetchResult<PHAsset>
+        if status == .limited {
+            // Khi ở chế độ Limited Access, truy vấn trực tiếp fetchAssets để lấy toàn bộ ảnh người dùng đã cấp quyền
             assets = PHAsset.fetchAssets(with: .image, options: options)
+        } else {
+            // Khi ở chế độ Authorized đầy đủ, ưu tiên Album Recents / Camera Roll
+            let userLibrary = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum,
+                subtype: .smartAlbumUserLibrary,
+                options: nil
+            ).firstObject
+
+            if let library = userLibrary {
+                assets = PHAsset.fetchAssets(in: library, options: options)
+                if assets.count == 0 {
+                    assets = PHAsset.fetchAssets(with: .image, options: options)
+                }
+            } else {
+                assets = PHAsset.fetchAssets(with: .image, options: options)
+            }
         }
 
         var result: [[String: Any]] = []

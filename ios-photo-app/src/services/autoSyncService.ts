@@ -148,17 +148,30 @@ export function removeSyncedDeviceIds(ids: string[]): void {
 }
 
 /**
+ * Trích xuất tên gốc của ảnh (bỏ đuôi định dạng .heic, .jpg, .png và icon để so khớp chính xác)
+ */
+export function getBasePhotoName(rawName: string): string {
+  if (!rawName) return "";
+  const firstLine = rawName.split("\n")[0] || "";
+  const clean = firstLine.replace(/^📷\s*/, "").trim();
+  // Bỏ đuôi mở rộng file (.heic, .heif, .jpg, .jpeg, .png, .webp, v.v.)
+  const withoutExt = clean.replace(/\.[a-zA-Z0-9]{2,5}$/, "").trim();
+  return withoutExt.toLowerCase();
+}
+
+/**
  * Dọn dẹp ID đã sao lưu theo tên file ảnh bị xóa
  */
 export async function removeSyncedDeviceIdsByFilenames(filenames: string[]): Promise<void> {
   if (!Capacitor.isNativePlatform() || filenames.length === 0) return;
   try {
-    const targetSet = new Set(filenames.map((f) => f.trim().toLowerCase()));
-    const res = await PhotoSync.getRecentPhotos({ limit: 100 });
+    const targetBases = new Set(filenames.map((f) => getBasePhotoName(f)).filter(Boolean));
+    const res = await PhotoSync.getRecentPhotos({ limit: 1000 });
     const devicePhotos = res.photos || [];
     const idsToRemove: string[] = [];
     devicePhotos.forEach((dp) => {
-      if (dp.filename && targetSet.has(dp.filename.toLowerCase())) {
+      const dpBase = getBasePhotoName(dp.filename || "");
+      if (dpBase && targetBases.has(dpBase)) {
         idsToRemove.push(dp.id);
       }
     });
@@ -468,6 +481,7 @@ export async function runAutoSync(
 
 /**
  * Lấy danh sách ID ảnh đã sao lưu lên Telegram và hiện vẫn còn tồn tại trên iPhone
+ * Nhận diện thông minh cả ảnh sao lưu tự động lẫn ảnh do người dùng thêm thủ công
  */
 export async function getFreeableDevicePhotos(existingPhotos?: PhotoItem[]): Promise<string[]> {
   if (!Capacitor.isNativePlatform()) return [];
@@ -481,25 +495,87 @@ export async function getFreeableDevicePhotos(existingPhotos?: PhotoItem[]): Pro
       }
     }
 
-    const existingNames = new Set(
-      cloudPhotos
-        .map((p) => p.caption || "")
-        .filter(Boolean)
-        .map((c) => {
-          const firstLine = c.split("\n")[0] || "";
-          return firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
-        })
-    );
+    if (cloudPhotos.length === 0) {
+      return [];
+    }
 
-    const res = await PhotoSync.getRecentPhotos({ limit: 100 });
+    // 1. Tạo tập hợp các tên file chính xác, tên gốc (không đuôi mở rộng) và timestamps
+    const exactCloudNames = new Set<string>();
+    const baseCloudNames = new Set<string>();
+    const cloudTimestamps: number[] = [];
+
+    cloudPhotos.forEach((p) => {
+      if (p.caption) {
+        const firstLine = p.caption.split("\n")[0] || "";
+        const clean = firstLine.replace(/^📷\s*/, "").trim().toLowerCase();
+        if (clean) exactCloudNames.add(clean);
+
+        const base = getBasePhotoName(p.caption);
+        // Không dùng tên gốc quá ngắn hoặc quá chung chung (như "image", "photo") để tránh nhận nhầm
+        if (base && base.length > 2 && !base.startsWith("image") && !base.startsWith("photo")) {
+          baseCloudNames.add(base);
+        }
+      }
+
+      const ts = p.date ? new Date(p.date).getTime() : 0;
+      if (ts > 0) {
+        cloudTimestamps.push(ts);
+      }
+    });
+
+    const syncedIds = getSyncedDeviceIds();
+
+    // 2. Lấy danh sách ảnh trên thiết bị (quét tối đa 1000 ảnh)
+    const res = await PhotoSync.getRecentPhotos({ limit: 1000 });
     const devicePhotos = res.photos || [];
 
-    // Chỉ cho phép giải phóng các ảnh đã được bảo chứng 100% tồn tại trên Telegram!
-    const freeable = devicePhotos
-      .filter((p) => p.filename && existingNames.has(p.filename.toLowerCase()))
-      .map((p) => p.id);
+    // 3. Đối soát ảnh thiết bị xem đã tồn tại trên Telegram chưa
+    const freeableIds: string[] = [];
+    let updatedSynced = false;
 
-    return freeable;
+    for (const dp of devicePhotos) {
+      // A. Nếu ID này đã được ghi nhận trong syncedIds
+      if (syncedIds.has(dp.id)) {
+        freeableIds.push(dp.id);
+        continue;
+      }
+
+      const dpFilename = (dp.filename || "").toLowerCase();
+      const dpBase = getBasePhotoName(dp.filename || "");
+
+      // B. Khớp chính xác tên file (ví dụ: IMG_0631.JPG == IMG_0631.jpg)
+      if (dpFilename && exactCloudNames.has(dpFilename)) {
+        freeableIds.push(dp.id);
+        syncedIds.add(dp.id);
+        updatedSynced = true;
+        continue;
+      }
+
+      // C. Khớp theo tên gốc (ví dụ: IMG_0631.HEIC trên máy khớp với IMG_0631.jpeg trên Telegram)
+      if (dpBase && baseCloudNames.has(dpBase)) {
+        freeableIds.push(dp.id);
+        syncedIds.add(dp.id);
+        updatedSynced = true;
+        continue;
+      }
+
+      // D. Khớp theo timestamp chụp ảnh thực tế (sai số <= 3 giây do làm tròn timestamp)
+      if (dp.timestamp && cloudTimestamps.length > 0) {
+        const matchTs = cloudTimestamps.some((ts) => Math.abs(ts - dp.timestamp) <= 3000);
+        if (matchTs) {
+          freeableIds.push(dp.id);
+          syncedIds.add(dp.id);
+          updatedSynced = true;
+          continue;
+        }
+      }
+    }
+
+    if (updatedSynced) {
+      saveSyncedDeviceIds(syncedIds);
+    }
+
+    return freeableIds;
   } catch (e) {
     console.error("Lỗi kiểm tra ảnh có thể giải phóng:", e);
     return [];
@@ -510,7 +586,10 @@ export async function getFreeableDevicePhotos(existingPhotos?: PhotoItem[]): Pro
  * Xóa ảnh đã sao lưu khỏi Thư viện ảnh iPhone để giải phóng bộ nhớ (Free Up Space)
  * Kích hoạt hộp thoại xác nhận gốc của iOS (PHAssetChangeRequest.deleteAssets)
  */
-export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
+export async function freeUpDeviceStorage(
+  specificIds?: string[],
+  existingPhotos?: PhotoItem[]
+): Promise<{
   success: boolean;
   deletedCount: number;
   message: string;
@@ -527,7 +606,7 @@ export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
   try {
     let targetIds = specificIds;
     if (!targetIds || targetIds.length === 0) {
-      targetIds = await getFreeableDevicePhotos();
+      targetIds = await getFreeableDevicePhotos(existingPhotos);
     }
 
     if (!targetIds || targetIds.length === 0) {
@@ -540,6 +619,7 @@ export async function freeUpDeviceStorage(specificIds?: string[]): Promise<{
 
     const res = await PhotoSync.deletePhotos({ ids: targetIds });
     if (res.success && res.deletedCount > 0) {
+      removeSyncedDeviceIds(targetIds);
       return {
         success: true,
         deletedCount: res.deletedCount,

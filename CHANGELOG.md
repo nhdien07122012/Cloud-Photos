@@ -4,6 +4,42 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 20)] - 2026-11-14
+- **Commit SHA**: `PENDING_COMMIT_SHA`
+- **Mục tiêu**:
+  1. Loại bỏ hoàn toàn khối "Tải ảnh lên Telegram" trong mục Cài đặt (Settings):
+     - Tối giản hoá giao diện Cài đặt, bắt đầu trực tiếp bằng khối "Bộ nhớ & Dung lượng" (Giải phóng dung lượng iPhone & Bộ nhớ đệm tạm thời).
+     - Việc tải ảnh từ thiết bị lên Telegram được quản lý tập trung và trực quan qua nút bấm Nổi bật (+) tại giao diện chính và trong các Album.
+     - Chuyển nút "Làm mới danh sách ảnh từ Telegram" vào trong mục "Tài khoản & Kênh Telegram" gọn gàng, tiện lợi.
+  2. Sửa triệt để lỗi "Giải phóng dung lượng iPhone" không nhận diện được các ảnh tải lên thủ công:
+     - **Nguyên nhân gốc rễ**:
+       + Khác biệt đuôi định dạng và đổi tên tự động của iOS WebKit: Ảnh chụp trên iPhone mặc định lưu dưới dạng `.HEIC` (High Efficiency) trong `PHAssetResource`. Khi người dùng chọn tải ảnh thủ công qua WebKit file input, iOS tự động nén/chuyển đổi sang JPEG và đổi tên file thành `.jpeg`, `.jpg` hoặc `image.jpg`.
+       + Thuật toán đối soát trước đây chỉ so khớp chuỗi tên file đầy đủ (`existingNames.has(dp.filename.toLowerCase())`), khiến `img_0631.heic` trên iPhone và `img_0631.jpeg` trên Telegram không bao giờ khớp nhau $\to$ luôn báo 0 ảnh có thể giải phóng.
+       + `SettingsModal` trước đây không truyền mảng `photos` vào `getFreeableDevicePhotos()`, dẫn đến việc quét phụ thuộc vào IndexedDB có thể thiếu sót.
+       + Giới hạn truy vấn thư viện bị giới hạn thấp (100 ảnh) và cơ chế đọc từ Smart Album `userLibrary` có thể trả về rỗng khi app ở quyền Limited Access.
+     - **Giải pháp xử lý**:
+       + Bổ sung hàm `getBasePhotoName`: Tự động trích xuất và chuẩn hóa tên gốc của ảnh, loại bỏ toàn bộ phần mở rộng định dạng (`.heic`, `.heif`, `.jpeg`, `.jpg`, `.png`, v.v.) và icon, giúp `IMG_0631.HEIC` khớp hoàn hảo với `IMG_0631.jpeg`.
+       + Đối soát đa tầng (Multi-tier Reconciliation):
+         1. Khớp theo `syncedIds` đã lưu.
+         2. Khớp chính xác tên file (exact match).
+         3. Khớp theo tên gốc (base name match).
+         4. Khớp theo thời gian chụp ảnh thực tế (`timestamp` sai số $\le$ 3 giây).
+       + Cơ chế ghi nhận tức thì khi người dùng chọn ảnh: Trong `App.tsx`, ngay khi người dùng chọn tải ảnh thủ công (cả ở thư viện lẫn trong Album), ứng dụng lập tức truy vấn danh sách `devicePhotos`, so khớp và lưu ngay ID thiết bị vào `syncedIds`.
+       + Nâng giới hạn quét lên 1000 ảnh và hỗ trợ fallback sang `PHAsset.fetchAssets(with: .image, options: options)` khi ở chế độ Limited Access.
+       + Truyền `photos={photos}` trực tiếp từ `App.tsx` vào `SettingsModal.tsx` để tính toán chính xác số ảnh an toàn có thể giải phóng.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Gỡ bỏ thẻ Tải ảnh lên Telegram, thêm nút làm mới vào mục Tài khoản, truyền `photos` vào `checkFreeableSpace` và `handleFreeUpStorage`, nâng cấp Build 20.
+  - `ios-photo-app/src/services/autoSyncService.ts`: Bổ sung `getBasePhotoName`, hoàn thiện thuật toán đối soát đa tầng trong `getFreeableDevicePhotos` và `freeUpDeviceStorage`.
+  - `ios-photo-app/src/App.tsx`: Tích hợp `matchAndSaveDeviceIdsForFiles` cho các luồng tải ảnh thủ công, truyền `photos` vào `SettingsModal`.
+  - `ios-photo-app/ios/App/App/AppDelegate.swift`: Tối ưu `getRecentPhotos` nâng limit lên 1000, xử lý linh hoạt cho Limited Access và smart album.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `20`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 19)] - 2026-11-14
 - **Commit SHA**: `4ea5c35`
 - **Mục tiêu**:

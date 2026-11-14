@@ -15,7 +15,14 @@ import {
   removeMultiplePhotosFromCache,
 } from "./services/photoStorage";
 import { uploadPhotosToTelegram, type UploadProgress } from "./services/uploadService";
-import { removeSyncedDeviceIdsByFilenames } from "./services/autoSyncService";
+import {
+  removeSyncedDeviceIdsByFilenames,
+  getBasePhotoName,
+  getSyncedDeviceIds,
+  saveSyncedDeviceIds,
+  PhotoSync,
+} from "./services/autoSyncService";
+import { Capacitor } from "@capacitor/core";
 import {
   getUserAlbums,
   createNewAlbum,
@@ -183,12 +190,46 @@ export const App: React.FC = () => {
     setIsUploadMenuOpen(true);
   };
 
+  const matchAndSaveDeviceIdsForFiles = async (files: File[]) => {
+    if (!Capacitor.isNativePlatform() || files.length === 0) return;
+    try {
+      const res = await PhotoSync.getRecentPhotos({ limit: 1000 });
+      const devicePhotos = res.photos || [];
+      const syncedIds = getSyncedDeviceIds();
+      let hasNewSync = false;
+
+      files.forEach((f) => {
+        const fBase = getBasePhotoName(f.name);
+        const fTs = f.lastModified;
+        const matched = devicePhotos.find((dp) => {
+          const dpBase = getBasePhotoName(dp.filename || "");
+          if (fBase && dpBase && fBase === dpBase && fBase.length > 2) return true;
+          if (fTs && dp.timestamp && Math.abs(fTs - dp.timestamp) <= 3000) return true;
+          return false;
+        });
+        if (matched) {
+          syncedIds.add(matched.id);
+          hasNewSync = true;
+        }
+      });
+
+      if (hasNewSync) {
+        saveSyncedDeviceIds(syncedIds);
+      }
+    } catch (matchErr) {
+      console.warn("Lỗi đối soát device photo IDs khi chọn ảnh thủ công:", matchErr);
+    }
+  };
+
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setIsUploadMenuOpen(false);
     if (files.length === 0) return;
 
     try {
+      // Đối soát ngay với ảnh trong máy để nhận diện ảnh an toàn có thể giải phóng
+      await matchAndSaveDeviceIdsForFiles(files);
+
       const uploaded = await uploadPhotosToTelegram(config, files, (p) => {
         setUploadProgress(p);
       });
@@ -213,6 +254,9 @@ export const App: React.FC = () => {
     if (files.length === 0 || !selectedUserAlbum) return;
 
     try {
+      // Đối soát ngay với ảnh trong máy để nhận diện ảnh an toàn có thể giải phóng
+      await matchAndSaveDeviceIdsForFiles(files);
+
       const uploaded = await uploadPhotosToTelegram(config, files, (p) => {
         setUploadProgress(p);
       });
@@ -1625,10 +1669,7 @@ export const App: React.FC = () => {
         theme={theme}
         onThemeChange={handleThemeChange}
         isDarkMode={isDarkMode}
-        onOpenUploadPicker={() => {
-          setIsSettingsOpen(false);
-          fileInputRef.current?.click();
-        }}
+        photos={photos}
         onRefreshPhotos={() => {
           setIsSettingsOpen(false);
           loadPhotos(true);

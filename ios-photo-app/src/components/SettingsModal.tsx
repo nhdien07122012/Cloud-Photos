@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import type { TelegramConfig, ThemeMode } from "../types";
+import type { TelegramConfig, ThemeMode, PhotoItem } from "../types";
 import {
   X,
   ShieldCheck,
@@ -13,7 +13,6 @@ import {
   Sun,
   Laptop,
   Cloud,
-  Upload,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -38,7 +37,7 @@ interface SettingsModalProps {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   isDarkMode: boolean;
-  onOpenUploadPicker?: () => void;
+  photos?: PhotoItem[];
   onRefreshPhotos?: () => void;
 }
 
@@ -51,7 +50,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   theme,
   onThemeChange,
   isDarkMode,
-  onOpenUploadPicker,
+  photos = [],
   onRefreshPhotos,
 }) => {
   const [formData, setFormData] = useState<TelegramConfig>(config);
@@ -79,7 +78,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const checkFreeableSpace = async () => {
     setIsScanningFreeable(true);
     try {
-      const freeable = await getFreeableDevicePhotos();
+      const freeable = await getFreeableDevicePhotos(photos);
       setFreeableCount(freeable.length);
     } catch {
       // ignore
@@ -97,7 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCleanupMessage(null);
       setStatusMsg("");
     }
-  }, [isOpen, config]);
+  }, [isOpen, config, photos]);
 
   const handleFreeUpStorage = async () => {
     if (freeableCount === 0) return;
@@ -109,7 +108,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsFreeingUp(true);
     setCleanupMessage("Đang yêu cầu iOS xóa ảnh khỏi thiết bị...");
     try {
-      const res = await freeUpDeviceStorage();
+      const res = await freeUpDeviceStorage(undefined, photos);
       setCleanupMessage(res.message);
       await checkFreeableSpace();
     } catch (err: any) {
@@ -276,69 +275,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="space-y-4">
           {/* ======================================================== */}
-          {/* THẺ 1: TẢI ẢNH LÊN TELEGRAM (MANUAL PHOTO UPLOAD)        */}
-          {/* ======================================================== */}
-          <div
-            className={`p-5 rounded-3xl border transition-all ${
-              isDarkMode
-                ? "bg-gradient-to-br from-emerald-950/40 via-neutral-900/90 to-neutral-900 border-emerald-500/30 shadow-lg shadow-emerald-950/20"
-                : "bg-gradient-to-br from-emerald-50 via-white to-white border-emerald-200 shadow-md"
-            }`}
-          >
-            <div className="flex items-center gap-3.5 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 shadow-inner">
-                <Upload className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold">Tải ảnh lên Telegram</h3>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    Chủ động
-                  </span>
-                </div>
-                <p className={`text-xs mt-0.5 ${isDarkMode ? "text-neutral-400" : "text-neutral-500"}`}>
-                  Chỉ tải các ảnh bạn tự chọn • Không quét ngầm thiết bị
-                </p>
-              </div>
-            </div>
-
-            <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? "text-neutral-300" : "text-neutral-600"}`}>
-              Chọn các bức ảnh bạn muốn lưu trữ từ iPhone để tải lên Kênh Telegram đám mây riêng tư, không giới hạn dung lượng và giữ nguyên chất lượng.
-            </p>
-
-            <div className="flex flex-col gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  if (onOpenUploadPicker) onOpenUploadPicker();
-                }}
-                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-              >
-                <Upload className="w-4 h-4" />
-                Chọn ảnh từ máy để tải lên ngay
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  if (onRefreshPhotos) onRefreshPhotos();
-                }}
-                className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all border cursor-pointer ${
-                  isDarkMode
-                    ? "border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-300"
-                    : "border-neutral-200 bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                }`}
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
-                Làm mới danh sách ảnh từ Telegram
-              </button>
-            </div>
-          </div>
-
-          {/* ======================================================== */}
-          {/* THẺ 2: QUẢN LÝ DUNG LƯỢNG (STORAGE & CACHE)              */}
+          {/* THẺ 1: QUẢN LÝ DUNG LƯỢNG (STORAGE & CACHE)              */}
           {/* ======================================================== */}
           <div
             className={`p-5 rounded-3xl border transition-all ${
@@ -472,6 +409,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <p>• Kênh lưu trữ: <strong>Kho ảnh đồng bộ Telegram</strong></p>
                   <p>• Channel ID: <strong>{formData.channelId || "Tự động nhận diện"}</strong></p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onRefreshPhotos) onRefreshPhotos();
+                  }}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all border cursor-pointer ${
+                    isDarkMode
+                      ? "border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800 text-neutral-300"
+                      : "border-neutral-200 bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                  }`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                  Làm mới danh sách ảnh từ Telegram
+                </button>
 
                 <button
                   type="button"
@@ -727,7 +680,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25 block">
-                Build 19
+                Build 20
               </span>
               <span className="text-[10px] text-neutral-500 block mt-0.5">iOS Native</span>
             </div>
@@ -745,7 +698,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 19 • Made with ❤️ by Diễn Nguyễn
+            CloudPhotos v1.3 • Build 20 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>
