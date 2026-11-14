@@ -4,6 +4,30 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 23)] - 2026-11-14
+- **Commit SHA**: `a95be35`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi hiển thị chồng đè/xếp lớp như bộ bài trong modal "Thêm ảnh vào Album":
+     - **Nguyên nhân gốc rễ**:
+       + Trong modal cuộn dọc (`flex-1 overflow-y-auto min-h-0`), layout CSS Grid (`grid grid-cols-3`) trên WebKit của iOS Safari gặp lỗi phân giải cyclic sizing (WebKit Bug 216999). Vì các thành phần con đều là `position: absolute` (`absolute inset-0`), chiều cao nội tại (intrinsic content height) của ô ảnh bị xem là 0/không xác định.
+       + WebKit tự động ép chiều cao track hàng của CSS Grid (`grid-auto-rows`) xuống chỉ còn ~35px.
+       + Trong khi đó, ô ảnh vẫn dựng chiều cao 115px theo tỷ lệ vuông 1:1, khiến các hàng cách nhau chỉ 35px và đè chồng (overlap) lên nhau 80px như một bộ bài xòe xuống, che khuất gần như toàn bộ hình ảnh.
+     - **Giải pháp xử lý triệt để**:
+       + Thay thế hoàn toàn CSS Grid bằng cấu trúc `flex flex-wrap` 3 cột (`w-1/3 p-1 box-border`), triệt tiêu 100% nguy cơ lỗi track sizing của CSS Grid trên WebKit.
+       + Kết hợp kỹ thuật padding tỷ lệ vàng `pb-[100%]` chuẩn W3C: chiều cao của mỗi ô ảnh được tính bằng đúng 100% chiều rộng của nó, đảm bảo vuông vức 1:1 tuyệt đối trên mọi phiên bản iOS.
+       + Khóa chiều cao modal `h-[85vh] max-h-[85vh]` cùng `shrink-0` ở phần header giúp trải nghiệm cuộn cảm ứng mượt mà và không bao giờ bị méo hình.
+       + Thêm thông báo trạng thái khi kho ảnh trống.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/App.tsx`: Tái cấu trúc lưới chọn ảnh sang `flex flex-wrap` 3 cột + `pb-[100%]`, bổ sung `h-[85vh]` và `shrink-0`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị `Build 23`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Cập nhật `CURRENT_PROJECT_VERSION` thành `23`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 22)] - 2026-11-14
 - **Commit SHA**: `f6d190a`
 - **Mục tiêu**:

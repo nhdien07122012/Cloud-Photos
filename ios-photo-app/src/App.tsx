@@ -1344,13 +1344,13 @@ export const App: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border max-h-[85vh] flex flex-col ${
+            className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border h-[85vh] max-h-[85vh] flex flex-col ${
               isDarkMode
                 ? "bg-[#1c1c1e] text-white border-neutral-800"
                 : "bg-white text-neutral-900 border-neutral-300"
             }`}
           >
-            <div className="flex items-center justify-between pb-3.5 border-b border-neutral-800 mb-3">
+            <div className="flex items-center justify-between pb-3.5 border-b border-neutral-800 mb-3 shrink-0">
               <div>
                 <h3 className="text-lg font-bold">Thêm ảnh vào Album</h3>
                 <p className="text-xs sm:text-sm text-neutral-400">
@@ -1359,66 +1359,81 @@ export const App: React.FC = () => {
               </div>
               <button
                 onClick={handleConfirmAddPhotosToAlbum}
-                className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl text-sm active:scale-95 shadow-md"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm active:scale-95 shadow-md transition-all cursor-pointer"
               >
                 Xong
               </button>
             </div>
 
-            {/* Lưới chọn ảnh (Tỷ lệ vuông chuẩn iOS, chống xẹp/méo khung hình) */}
-            <div className="flex-1 overflow-y-auto min-h-0 grid grid-cols-3 gap-1.5 p-1">
-              {photos.map((photo) => {
-                const isSelected =
-                  selectedPhotoIdsForAlbum.has(photo.messageId) ||
-                  selectedPhotoIdsForAlbum.has(photo.id);
+            {/* Lưới chọn ảnh: Dùng flex flex-wrap 3 cột kết hợp padding-bottom: 100% chống triệt để WebKit Safari grid collapse/overlapping */}
+            <div className="flex-1 overflow-y-auto min-h-0 pr-0.5">
+              {photos.length === 0 ? (
+                <div className="py-12 text-center text-neutral-400 text-sm">
+                  Chưa có ảnh nào trong kho để thêm vào album
+                </div>
+              ) : (
+                <div className="flex flex-wrap -m-1">
+                  {photos.map((photo) => {
+                    const isSelected =
+                      selectedPhotoIdsForAlbum.has(photo.messageId) ||
+                      selectedPhotoIdsForAlbum.has(photo.id);
 
-                const handleToggle = () => {
-                  setSelectedPhotoIdsForAlbum((prev) => {
-                    const next = new Set(prev);
-                    if (isSelected) {
-                      next.delete(photo.messageId);
-                      next.delete(photo.id);
-                    } else {
-                      next.add(photo.messageId);
-                    }
-                    return next;
-                  });
-                };
+                    const handleToggle = () => {
+                      setSelectedPhotoIdsForAlbum((prev) => {
+                        const next = new Set(prev);
+                        if (isSelected) {
+                          next.delete(photo.messageId);
+                          next.delete(photo.id);
+                        } else {
+                          next.add(photo.messageId);
+                        }
+                        return next;
+                      });
+                    };
 
-                return (
-                  <div
-                    key={photo.id}
-                    onClick={handleToggle}
-                    className={`relative aspect-square w-full rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all select-none ${
-                      isDarkMode ? "bg-neutral-800" : "bg-neutral-200"
-                    } ${isSelected ? "ring-4 ring-blue-500 ring-offset-2 ring-offset-black" : ""}`}
-                  >
-                    <img
-                      src={photo.thumbnailUrl || photo.url}
-                      alt=""
-                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
-                      loading="lazy"
-                    />
+                    return (
+                      <div key={photo.id} className="w-1/3 p-1 box-border">
+                        <div
+                          onClick={handleToggle}
+                          className={`relative w-full pb-[100%] rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all select-none ${
+                            isDarkMode ? "bg-neutral-800" : "bg-neutral-200"
+                          } ${
+                            isSelected
+                              ? "ring-4 ring-blue-500 ring-offset-2 ring-offset-black"
+                              : ""
+                          }`}
+                        >
+                          <div className="absolute inset-0 w-full h-full">
+                            <img
+                              src={photo.thumbnailUrl || photo.url}
+                              alt=""
+                              className="w-full h-full object-cover select-none pointer-events-none"
+                              loading="lazy"
+                            />
 
-                    {photo.isVideo && (
-                      <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-black/65 backdrop-blur-sm text-white flex items-center gap-1 text-[9px] font-bold pointer-events-none shadow-sm">
-                        <Play className="w-2.5 h-2.5 fill-white" />
-                        <span>Video</span>
+                            {photo.isVideo && (
+                              <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-black/65 backdrop-blur-sm text-white flex items-center gap-1 text-[9px] font-bold pointer-events-none shadow-sm">
+                                <Play className="w-2.5 h-2.5 fill-white" />
+                                <span>Video</span>
+                              </div>
+                            )}
+
+                            <div
+                              className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                                isSelected
+                                  ? "bg-blue-600 border-white text-white shadow-lg scale-105"
+                                  : "border-white/80 bg-black/40 text-transparent"
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
-
-                    <div
-                      className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                        isSelected
-                          ? "bg-blue-600 border-white text-white shadow-lg scale-105"
-                          : "border-white/80 bg-black/40 text-transparent"
-                      }`}
-                    >
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
