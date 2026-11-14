@@ -4,6 +4,28 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 24)] - 2026-11-14
+- **Commit SHA**: `ba8fd16`
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi giao diện trình chiếu Khoảnh khắc / Kỷ niệm (Memories Story Viewer) bị cấn vào thanh trạng thái iPhone:
+     - **Nguyên nhân gốc rễ**:
+       + Thanh tiêu đề và các vạch tiến trình (progress bars) của trình xem câu chuyện trong `MemoriesView.tsx` trước đây chỉ dùng `pt-3` (12px), hoàn toàn thiếu khoảng đệm an toàn iOS Safe Area Inset.
+       + Trên các dòng iPhone có tai thỏ (notch) hoặc Dynamic Island (chiều cao vùng an toàn từ 44px đến 59px), đồng hồ iOS, vạch sóng LTE và icon pin đè trực tiếp lên thanh tiến trình, tiêu đề "Khoảnh khắc tuần qua", nút tạm dừng và nút đóng `X`.
+     - **Giải pháp xử lý triệt để**:
+       + Áp dụng khoảng đệm an toàn động cho thanh trên: `paddingTop: max(calc(var(--sat, 0px) + 12px), 52px)`, tự động đẩy thanh tiến trình và tiêu đề câu chuyện xuống dưới Dynamic Island và tai thỏ, hiển thị thông thoáng 100%.
+       + Áp dụng khoảng đệm an toàn cho thanh dưới: `paddingBottom: max(calc(var(--sab, 0px) + 20px), 36px)`, đảm bảo không bị cấn vào thanh gạt Home Indicator của iOS.
+       + Tinh chỉnh các nút bấm điều khiển (Play/Pause, Đóng `X`, Yêu thích, Phóng to) chuẩn kích thước 36px - 44px dạng kính mờ cao cấp, dễ bấm và phản hồi xúc giác mượt mà.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/MemoriesView.tsx`: Thêm `paddingTop: max(calc(var(--sat, 0px) + 12px), 52px)` và `paddingBottom: max(calc(var(--sab, 0px) + 20px), 36px)`, nâng cấp nút bấm điều khiển.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị `Build 24`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Cập nhật `CURRENT_PROJECT_VERSION` thành `24`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 23)] - 2026-11-14
 - **Commit SHA**: `a95be35`
 - **Mục tiêu**:

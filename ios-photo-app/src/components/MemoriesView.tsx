@@ -635,16 +635,21 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
           onTouchEnd={() => setIsPaused(false)}
         >
           {/* Top Segmented Story Progress Bars */}
-          <div className="absolute top-0 inset-x-0 z-20 pt-3 px-3 pb-2 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+          <div
+            className="absolute top-0 inset-x-0 z-20 px-4 pb-4 bg-gradient-to-b from-black/95 via-black/70 to-transparent pointer-events-auto"
+            style={{
+              paddingTop: "max(calc(var(--sat, 0px) + 12px), 52px)",
+            }}
+          >
             {/* Bars Container */}
-            <div className="flex gap-1.5 items-center mb-3">
+            <div className="flex gap-1.5 items-center mb-3.5">
               {activeStory.photos.map((_, idx) => (
                 <div
                   key={idx}
-                  className="flex-1 h-1 rounded-full bg-white/25 overflow-hidden"
+                  className="flex-1 h-1 rounded-full bg-white/25 overflow-hidden backdrop-blur-sm"
                 >
                   <div
-                    className="h-full bg-white transition-all duration-75 rounded-full"
+                    className="h-full bg-white transition-all duration-75 rounded-full shadow-sm"
                     style={{
                       width:
                         idx < currentSlideIndex
@@ -660,13 +665,15 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
 
             {/* Story Header info and actions */}
             <div className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xl">{activeStory.icon || "✨"}</span>
-                <div>
-                  <h4 className="text-sm font-extrabold leading-tight drop-shadow">
+              <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                <span className="text-xl shrink-0 p-1 rounded-xl bg-white/10 backdrop-blur-md border border-white/15">
+                  {activeStory.icon || "✨"}
+                </span>
+                <div className="min-w-0">
+                  <h4 className="text-sm sm:text-base font-extrabold leading-tight drop-shadow truncate">
                     {activeStory.title}
                   </h4>
-                  <p className="text-[11px] text-neutral-300 font-medium drop-shadow">
+                  <p className="text-[11px] sm:text-xs text-neutral-300 font-medium drop-shadow truncate mt-0.5">
                     {activeStory.photos[currentSlideIndex]?.date?.toLocaleDateString(
                       "vi-VN",
                       { day: "numeric", month: "short", year: "numeric" }
@@ -675,29 +682,33 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {/* Pause/Play Button */}
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsPaused(!isPaused);
                   }}
-                  className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white border border-white/20 active:scale-90 transition-all cursor-pointer"
+                  className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white border border-white/25 active:scale-90 transition-all cursor-pointer shadow-lg"
+                  title={isPaused ? "Tiếp tục" : "Tạm dừng"}
                 >
                   {isPaused ? (
-                    <Play className="w-3.5 h-3.5 fill-white" />
+                    <Play className="w-4 h-4 fill-white ml-0.5" />
                   ) : (
-                    <Pause className="w-3.5 h-3.5 fill-white" />
+                    <Pause className="w-4 h-4 fill-white" />
                   )}
                 </button>
 
                 {/* Close Button */}
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setActiveStory(null);
                   }}
-                  className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white border border-white/20 active:scale-90 transition-all cursor-pointer"
+                  className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white border border-white/25 active:scale-90 transition-all cursor-pointer shadow-lg"
+                  title="Đóng câu chuyện"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -726,25 +737,32 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
           </div>
 
           {/* Bottom Story Controls & Info */}
-          <div className="absolute bottom-0 inset-x-0 z-20 p-5 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex items-center justify-between text-white pb-10">
-            <div className="flex-1 pr-4">
-              <p className="text-xs text-neutral-300 font-semibold">
+          <div
+            className="absolute bottom-0 inset-x-0 z-20 px-5 pt-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex items-center justify-between text-white"
+            style={{
+              paddingBottom: "max(calc(var(--sab, 0px) + 20px), 36px)",
+            }}
+          >
+            <div className="flex-1 pr-4 min-w-0">
+              <p className="text-xs text-neutral-300 font-semibold truncate">
                 @{activeStory.photos[currentSlideIndex]?.author || "Telegram"} • Ảnh {currentSlideIndex + 1}/{activeStory.photos.length}
               </p>
-              <h5 className="text-sm font-bold mt-0.5 line-clamp-2 drop-shadow">
+              <h5 className="text-sm sm:text-base font-bold mt-0.5 line-clamp-2 drop-shadow">
                 {activeStory.photos[currentSlideIndex]?.caption || "Khoảnh khắc kỷ niệm"}
               </h5>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 shrink-0">
               {/* Toggle Favorite */}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   const photo = activeStory.photos[currentSlideIndex];
                   if (photo) onToggleFavorite(String(photo.id));
                 }}
-                className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg"
+                className="w-11 h-11 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/25 shadow-lg"
+                title="Yêu thích"
               >
                 <Heart
                   className={`w-5 h-5 ${
@@ -758,6 +776,7 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
 
               {/* Fullscreen Photo Viewer */}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   const photo = activeStory.photos[currentSlideIndex];
@@ -766,7 +785,8 @@ export const MemoriesView: React.FC<MemoriesViewProps> = ({
                     onSelectPhoto(photo);
                   }
                 }}
-                className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/20 shadow-lg text-white"
+                className="w-11 h-11 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center active:scale-90 transition-all cursor-pointer border border-white/25 shadow-lg text-white"
+                title="Xem chi tiết"
               >
                 <Maximize2 className="w-5 h-5" />
               </button>
