@@ -260,28 +260,31 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
     }
   };
 
-  // Tải ảnh về máy iPhone (Hỗ trợ iOS Camera Roll)
+  // Tải ảnh hoặc video về máy iPhone (Hỗ trợ iOS Camera Roll)
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    showToast("Đang chuẩn bị ảnh chất lượng cao...");
+    const isVideo = photo.isVideo;
+    showToast(isVideo ? "Đang chuẩn bị video..." : "Đang chuẩn bị ảnh chất lượng cao...");
 
     try {
       const targetUrl = hdUrl || photo.url;
       const res = await fetch(targetUrl);
       const blob = await res.blob();
+      const ext = isVideo ? "mp4" : "jpg";
+      const mime = isVideo ? "video/mp4" : "image/jpeg";
       const file = new File(
         [blob],
-        `instagram_${photo.author || "photo"}_${Date.now()}.jpg`,
-        { type: "image/jpeg" }
+        `cloudphotos_${photo.author || (isVideo ? "video" : "photo")}_${Date.now()}.${ext}`,
+        { type: mime }
       );
 
-      // Cách 1: Native Web Share File (Mở menu iOS chứa nút 'Lưu hình ảnh' vào Thư viện)
+      // Cách 1: Native Web Share File (Mở menu iOS chứa nút 'Lưu video' / 'Lưu hình ảnh' vào Thư viện)
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "Lưu vào Thư viện ảnh",
+          title: isVideo ? "Lưu Video vào Thư viện" : "Lưu vào Thư viện ảnh",
         });
-        showToast("👉 Chọn 'Lưu hình ảnh' để lưu vào Thư viện iPhone");
+        showToast(isVideo ? "👉 Chọn 'Lưu video' vào Thư viện iPhone" : "👉 Chọn 'Lưu hình ảnh' để lưu vào Thư viện iPhone");
         return;
       }
     } catch (err: any) {
@@ -292,15 +295,17 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
 
     // Cách 2: Browser download fallback (trình duyệt máy tính hoặc Android)
     try {
+      const isVideo = photo.isVideo;
+      const ext = isVideo ? "mp4" : "jpg";
       const a = document.createElement("a");
       a.href = hdUrl || photo.url;
-      a.download = `instagram_${photo.author || "photo"}_${Date.now()}.jpg`;
+      a.download = `cloudphotos_${photo.author || (isVideo ? "video" : "photo")}_${Date.now()}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      showToast("Đã tải ảnh về máy");
+      showToast(isVideo ? "Đã tải video về máy" : "Đã tải ảnh về máy");
     } catch {
-      showToast("Mẹo: Nhấn giữ vào ảnh và chọn 'Lưu vào Ảnh'");
+      showToast("Mẹo: Nhấn giữ vào ảnh/video và chọn 'Lưu vào Ảnh'");
     }
   };
 
@@ -405,16 +410,33 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
         onTouchEnd={handleTouchEnd}
         className="relative flex-1 flex items-center justify-center overflow-hidden cursor-pointer touch-none"
       >
-        <img
-          src={hdUrl || photo.url}
-          alt={photo.caption || "Fullscreen view"}
-          style={{
-            transform: `scale(${scale}) translate(${(position.x + swipeOffset) / scale}px, ${position.y / scale}px)`,
-            transition: isGesturing ? "none" : "transform 0.25s cubic-bezier(0.2, 0, 0, 1)",
-            WebkitTouchCallout: "default",
-          }}
-          className="max-w-full max-h-full object-contain pointer-events-auto select-none"
-        />
+        {photo.isVideo ? (
+          <div
+            className="w-full h-full flex items-center justify-center p-2 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <video
+              src={hdUrl || photo.url}
+              poster={photo.thumbnailUrl}
+              controls
+              playsInline
+              autoPlay
+              loop
+              className="max-w-full max-h-[82vh] rounded-2xl shadow-2xl object-contain pointer-events-auto"
+            />
+          </div>
+        ) : (
+          <img
+            src={hdUrl || photo.url}
+            alt={photo.caption || "Fullscreen view"}
+            style={{
+              transform: `scale(${scale}) translate(${(position.x + swipeOffset) / scale}px, ${position.y / scale}px)`,
+              transition: isGesturing ? "none" : "transform 0.25s cubic-bezier(0.2, 0, 0, 1)",
+              WebkitTouchCallout: "default",
+            }}
+            className="max-w-full max-h-full object-contain pointer-events-auto select-none"
+          />
+        )}
 
         {loadingHd && (
           <div className="absolute top-24 right-4 bg-black/60 border border-neutral-700/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 text-xs text-neutral-300 pointer-events-none">

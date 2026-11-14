@@ -331,6 +331,13 @@ export async function fetchChannelPhotos(
       const isDoc = !!msg.media.document;
       if (!isPhoto && !isDoc) continue;
 
+      const isVideo = isDoc && (
+        msg.media.document?.mimeType?.startsWith("video/") ||
+        msg.media.document?.attributes?.some((a: any) => a.className === "DocumentAttributeVideo") ||
+        /\.(mp4|mov|m4v|webm)$/i.test(msg.message || "") ||
+        Boolean(msg.message && msg.message.startsWith("🎥"))
+      );
+
       // Nếu đã có trong IndexedDB, bỏ qua không tải lại
       if (cachedIds.has(msg.id)) continue;
 
@@ -385,6 +392,7 @@ export async function fetchChannelPhotos(
             caption: msg.message || "",
             timestamp: photoTimestamp,
             isCarousel: msg.groupedId != null,
+            isVideo: !!isVideo,
           });
           cachedIds.add(msg.id);
         }

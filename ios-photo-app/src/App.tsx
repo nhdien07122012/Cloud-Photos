@@ -58,6 +58,7 @@ import {
   Check,
   Trash2,
   ImagePlus,
+  Play,
 } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -1364,8 +1365,8 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Lưới chọn ảnh */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-1 pr-0.5">
+            {/* Lưới chọn ảnh (Tỷ lệ vuông chuẩn iOS, chống xẹp/méo khung hình) */}
+            <div className="flex-1 overflow-y-auto min-h-0 grid grid-cols-3 gap-1.5 p-1">
               {photos.map((photo) => {
                 const isSelected =
                   selectedPhotoIdsForAlbum.has(photo.messageId) ||
@@ -1388,19 +1389,28 @@ export const App: React.FC = () => {
                   <div
                     key={photo.id}
                     onClick={handleToggle}
-                    className="relative aspect-square overflow-hidden cursor-pointer active:opacity-80 group"
+                    className={`relative aspect-square w-full rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all select-none ${
+                      isDarkMode ? "bg-neutral-800" : "bg-neutral-200"
+                    } ${isSelected ? "ring-4 ring-blue-500 ring-offset-2 ring-offset-black" : ""}`}
                   >
                     <img
                       src={photo.thumbnailUrl || photo.url}
                       alt=""
-                      className={`w-full h-full object-cover transition-opacity ${
-                        isSelected ? "opacity-75" : ""
-                      }`}
+                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+                      loading="lazy"
                     />
+
+                    {photo.isVideo && (
+                      <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-black/65 backdrop-blur-sm text-white flex items-center gap-1 text-[9px] font-bold pointer-events-none shadow-sm">
+                        <Play className="w-2.5 h-2.5 fill-white" />
+                        <span>Video</span>
+                      </div>
+                    )}
+
                     <div
                       className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
                         isSelected
-                          ? "bg-blue-600 border-white text-white shadow-md scale-105"
+                          ? "bg-blue-600 border-white text-white shadow-lg scale-105"
                           : "border-white/80 bg-black/40 text-transparent"
                       }`}
                     >

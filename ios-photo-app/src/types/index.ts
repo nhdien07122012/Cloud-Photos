@@ -11,6 +11,8 @@ export interface PhotoItem {
   groupedId?: string;
   date: Date;
   isCarousel?: boolean;
+  isVideo?: boolean;
+  videoDuration?: number;
   carouselIndex?: number;
   totalInCarousel?: number;
   carouselItems?: PhotoItem[];

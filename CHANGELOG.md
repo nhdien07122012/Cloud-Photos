@@ -4,6 +4,48 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 21)] - 2026-11-14
+- **Commit SHA**: `33b02f4`
+- **Mục tiêu**:
+  1. Hỗ trợ tải lên video và phát video trực tiếp mượt mà trên ứng dụng:
+     - Hỗ trợ đầy đủ các định dạng video chuẩn (`.mp4`, `.mov`, `.m4v`, `.webm`).
+     - Tự động trích xuất ảnh bìa/thumbnail sắc nét từ video tại mốc 0.5s thông qua `<video>` + `<canvas>`, có cơ chế fallback timeout 6s an toàn.
+     - Hiển thị huy hiệu video bán trong suốt (icon Play kính mờ) trên cả lưới thư viện chính và trong modal chọn ảnh vào Album.
+     - Trình xem ảnh/video phóng to toàn màn hình (`PhotoViewer.tsx`) hỗ trợ thẻ `<video>` tối ưu phần cứng iOS với các thuộc tính `controls`, `playsInline`, `autoPlay`, `loop`, phát mượt mà không lag giật nhờ phát trực tiếp từ local Blob URL trong IndexedDB cache.
+     - Tự động nhận diện định dạng MIME và xuất file chuẩn (`.mp4`) khi người dùng chia sẻ hoặc tải video về iPhone qua Web Share API / download fallback.
+  2. Tối ưu hoá bộ nhớ đệm tự động mở rộng (Scalable Offline Cache):
+     - Lưu trữ toàn bộ dữ liệu ảnh và video đầy đủ vào IndexedDB (`StoredPhotoRecord`), không giới hạn cố định; tải lên bao nhiêu, bộ nhớ đệm tự động lưu trữ bấy nhiêu để xem lại tức thì offline không cần tải lại từ Telegram.
+     - Cập nhật hàm phát hiện định dạng file `detectMimeType` nhận diện magic bytes chuẩn cho MP4/QuickTime (`ftyp`, `moov`, `mdat`).
+     - Thống kê bộ nhớ đệm chi tiết trong Cài đặt: Hiển thị dung lượng MB và phân loại chính xác số lượng ảnh, video đang lưu trong máy (`... MB • ... tệp (... ảnh, ... video)`).
+  3. Sửa triệt để lỗi ảnh bị ép dẹt / méo dải ngang trong modal "Thêm ảnh vào Album":
+     - **Nguyên nhân gốc rễ**: Modal sử dụng layout flexbox cuộn dọc thiếu `min-h-0`, kết hợp với thẻ `<img>` không dùng định vị tuyệt đối `absolute inset-0` bên trong ô `aspect-square`. Trên engine WebKit của iOS Safari, chiều cao hàng lưới bị co rút về chiều cao dòng chữ (khoảng 20-30px), ép ảnh thành dải ngang dẹp.
+     - **Giải pháp**: Thêm `min-h-0` vào container flex cuộn, chuẩn hóa wrapper ô ảnh thành `relative aspect-square w-full rounded-xl overflow-hidden` và định vị thẻ `<img>` bằng `absolute inset-0 w-full h-full object-cover`. Đồng thời bổ sung huy hiệu Play cho các tệp video khi chọn vào album.
+  4. Tính năng Sao lưu & Khôi phục thông số Telegram API (API ID & Hash Backup / Restore):
+     - Tích hợp bảng điều khiển sao lưu cấu hình API ngay trong mục Cài đặt:
+       + **Sao chép mã nhanh (Quick Copy)**: Mã hóa Base64 toàn bộ API ID, API Hash, SĐT, Channel ID với tiền tố `CPCONF:...` để copy vào clipboard chỉ với 1 chạm.
+       + **Dán mã nhanh (Quick Paste)**: Tự động giải mã và điền các thông số API vào form đăng nhập khi đổi thiết bị.
+       + **Xuất file JSON**: Tải tệp sao lưu `CloudPhotos_API_Config.json` về máy hoặc lưu vào iCloud/Files.
+       + **Nhập file JSON**: Khôi phục cấu hình từ tệp tin sao lưu trước đó.
+  5. Tăng kích thước font chữ và tối ưu giao diện Cài đặt (Settings):
+     - Toàn bộ cỡ chữ tiêu đề, mô tả tính năng, nút bấm và nhãn trạng thái trong Cài đặt được nâng cấp to rõ hơn (`text-2xl/3xl`, `text-base/lg`, `text-sm/base`).
+     - Tối ưu độ tương phản, khoảng cách bấm chạm theo ngôn ngữ thiết kế iOS 18 Accessibility, giúp người dùng dễ đọc và thao tác chuẩn xác.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/types/index.ts`: Bổ sung `isVideo` và `videoDuration` vào interface `PhotoItem`.
+  - `ios-photo-app/src/services/photoStorage.ts`: Hỗ trợ lưu trữ/đọc video trong IndexedDB, nhận diện magic bytes MP4, mở rộng `getCacheStats` trả về `photoCount` và `videoCount`.
+  - `ios-photo-app/src/services/uploadService.ts`: Thêm hàm tạo thumbnail video `createVideoThumbnail`, xử lý upload video lên Telegram channel với ký hiệu `🎥`.
+  - `ios-photo-app/src/services/telegramClient.ts`: Tự động nhận diện video message/document từ Telegram channel, gắn cờ `isVideo: true` khi lưu cache.
+  - `ios-photo-app/src/components/PhotoGrid.tsx`: Bổ sung huy hiệu Play trên các item video.
+  - `ios-photo-app/src/components/PhotoViewer.tsx`: Render thẻ `<video>` mượt mà, hỗ trợ download/chia sẻ tệp video.
+  - `ios-photo-app/src/App.tsx`: Sửa lỗi hiển thị dẹt ảnh trong modal chọn album (`min-h-0`, `absolute inset-0`), thêm icon video.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Tăng kích thước font toàn bộ cài đặt, thêm mục Sao lưu/Khôi phục API (Copy token, Paste token, Export/Import JSON), hiển thị chi tiết số lượng ảnh và video trong bộ nhớ đệm, nâng version Build 21.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Cập nhật `CURRENT_PROJECT_VERSION` thành `21`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 20)] - 2026-11-14
 - **Commit SHA**: `e69ea87`
 - **Mục tiêu**:

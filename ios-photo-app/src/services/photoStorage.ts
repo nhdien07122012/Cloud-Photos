@@ -20,6 +20,8 @@ interface StoredPhotoRecord {
   groupedId?: string;
   timestamp: number;
   isCarousel?: boolean;
+  isVideo?: boolean;
+  videoDuration?: number;
 }
 
 // In-memory URL cache để tránh tạo lại nhiều lần trong 1 session
@@ -27,15 +29,22 @@ const objectUrlMap = new Map<number, string>();
 const hdUrlMap = new Map<number, string>();
 
 /**
- * Nhận diện MIME Type thực tế từ Magic Bytes của ảnh (JPEG, PNG, WebP, GIF)
+ * Nhận diện MIME Type thực tế từ Magic Bytes của ảnh/video (JPEG, PNG, WebP, GIF, MP4, MOV)
  */
 function detectMimeType(buf: ArrayBuffer): string {
   if (!buf || buf.byteLength < 4) return "image/jpeg";
-  const u8 = new Uint8Array(buf.slice(0, 12));
+  const u8 = new Uint8Array(buf.slice(0, 16));
   if (u8[0] === 0xff && u8[1] === 0xd8) return "image/jpeg";
   if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) return "image/png";
   if (u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46) return "image/webp";
   if (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46) return "image/gif";
+  if (
+    (u8[4] === 0x66 && u8[5] === 0x74 && u8[6] === 0x79 && u8[7] === 0x70) ||
+    (u8[4] === 0x6d && u8[5] === 0x6f && u8[6] === 0x6f && u8[7] === 0x76) ||
+    (u8[0] === 0x00 && u8[1] === 0x00 && u8[2] === 0x00 && (u8[3] === 0x18 || u8[3] === 0x20))
+  ) {
+    return "video/mp4";
+  }
   return "image/jpeg";
 }
 
@@ -93,25 +102,44 @@ export async function getCachedPhotosFromDB(): Promise<PhotoItem[]> {
           // Ưu tiên thumbnail, fallback sang HD nếu thumbnail hỏng
           const validBuffer = thumbLen >= 100 ? rec.thumbnailData : rec.hdData!;
           const mimeType = detectMimeType(validBuffer);
+          const isVideo =
+            rec.isVideo ||
+            (rec.caption && /\.(mp4|mov|m4v|webm)$/i.test(rec.caption)) ||
+            (rec.hdData && detectMimeType(rec.hdData).startsWith("video/")) ||
+            false;
 
           let url = objectUrlMap.get(rec.messageId);
           if (!url) {
-            const blob = new Blob([validBuffer], { type: mimeType });
-            url = URL.createObjectURL(blob);
+            if (isVideo && rec.hdData && rec.hdData.byteLength >= 100) {
+              const blob = new Blob([rec.hdData], { type: "video/mp4" });
+              url = URL.createObjectURL(blob);
+            } else {
+              const blob = new Blob([validBuffer], { type: mimeType });
+              url = URL.createObjectURL(blob);
+            }
             objectUrlMap.set(rec.messageId, url);
+          }
+
+          let thumbUrl = url;
+          if (isVideo) {
+            if (rec.thumbnailData && rec.thumbnailData.byteLength >= 100) {
+              const thumbBlob = new Blob([rec.thumbnailData], { type: "image/jpeg" });
+              thumbUrl = URL.createObjectURL(thumbBlob);
+            }
           }
 
           validPhotos.push({
             id: rec.id,
             messageId: rec.messageId,
             url,
-            thumbnailUrl: url,
+            thumbnailUrl: thumbUrl,
             author: rec.author,
             caption: rec.caption,
             originalUrl: rec.originalUrl,
             groupedId: rec.groupedId,
             date: new Date(rec.timestamp),
             isCarousel: rec.isCarousel,
+            isVideo,
           });
         }
 
@@ -301,9 +329,14 @@ export async function saveHdPhotoToCache(
 }
 
 /**
- * Lấy thống kê dung lượng bộ nhớ đệm
+ * Lấy thống kê dung lượng bộ nhớ đệm (bao gồm số ảnh và số video)
  */
-export async function getCacheStats(): Promise<{ count: number; sizeMB: string }> {
+export async function getCacheStats(): Promise<{
+  count: number;
+  sizeMB: string;
+  photoCount: number;
+  videoCount: number;
+}> {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
@@ -315,22 +348,29 @@ export async function getCacheStats(): Promise<{ count: number; sizeMB: string }
         const records = (request.result || []) as StoredPhotoRecord[];
         let totalBytes = 0;
         let validCount = 0;
+        let photoCount = 0;
+        let videoCount = 0;
         for (const rec of records) {
           const t = rec.thumbnailData ? rec.thumbnailData.byteLength : 0;
           const h = rec.hdData ? rec.hdData.byteLength : 0;
           if (t >= 100 || h >= 100) {
             totalBytes += t + h;
             validCount++;
+            if (rec.isVideo || (rec.caption && /\.(mp4|mov|m4v|webm)$/i.test(rec.caption))) {
+              videoCount++;
+            } else {
+              photoCount++;
+            }
           }
         }
         const sizeMB = (totalBytes / (1024 * 1024)).toFixed(1);
-        resolve({ count: validCount, sizeMB });
+        resolve({ count: validCount, sizeMB, photoCount, videoCount });
       };
 
-      request.onerror = () => resolve({ count: 0, sizeMB: "0" });
+      request.onerror = () => resolve({ count: 0, sizeMB: "0", photoCount: 0, videoCount: 0 });
     });
   } catch {
-    return { count: 0, sizeMB: "0" };
+    return { count: 0, sizeMB: "0", photoCount: 0, videoCount: 0 };
   }
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, memo } from "react";
 import type { PhotoItem, DateGroup } from "../types";
-import { Layers, ImagePlus, Check, Image as ImageIcon } from "lucide-react";
+import { Layers, ImagePlus, Check, Image as ImageIcon, Play } from "lucide-react";
 
 interface PhotoGridProps {
   groups: DateGroup[];
@@ -89,7 +89,14 @@ const PhotoGridItem: React.FC<PhotoGridItemProps> = memo(
           />
         )}
 
-        {/* 3. BADGE CAROUSEL (BỘ NHIỀU ẢNH) */}
+        {/* 3. BADGE VIDEO HOẶC CAROUSEL */}
+        {photo.isVideo && (
+          <div className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded-lg bg-black/65 backdrop-blur-md text-white flex items-center gap-1 text-[11px] font-bold pointer-events-none shadow-md">
+            <Play className="w-3 h-3 fill-white" />
+            <span>Video</span>
+          </div>
+        )}
+
         {photo.isCarousel && !isSelectMode && (
           <div className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/60 backdrop-blur-sm text-white pointer-events-none">
             <Layers className="w-3.5 h-3.5" />
