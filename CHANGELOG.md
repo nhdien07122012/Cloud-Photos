@@ -5,7 +5,7 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 ---
 
 ## [v1.3 (Build 20)] - 2026-11-14
-- **Commit SHA**: `PENDING_COMMIT_SHA`
+- **Commit SHA**: `e69ea87`
 - **Mục tiêu**:
   1. Loại bỏ hoàn toàn khối "Tải ảnh lên Telegram" trong mục Cài đặt (Settings):
      - Tối giản hoá giao diện Cài đặt, bắt đầu trực tiếp bằng khối "Bộ nhớ & Dung lượng" (Giải phóng dung lượng iPhone & Bộ nhớ đệm tạm thời).
