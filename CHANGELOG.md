@@ -4,6 +4,36 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 22)] - 2026-11-14
+- **Commit SHA**: `f6d190a`
+- **Mục tiêu**:
+  1. Đồng bộ giao diện Cấu hình & Sao lưu chuyển máy giống 100% ứng dụng `insta_downloader`:
+     - Thiết kế lại phần đầu modal Cài đặt thành **"Cấu hình Telegram MTProto"** với thanh 3 Tab đồng bộ: `[ Thông số API ]` `[ Đăng nhập MTProto ]` `[ ☁️ Sao lưu iCloud ]`.
+     - Trong Tab **"Sao lưu iCloud"**:
+       + Thẻ giới thiệu: **Sao lưu & Khôi phục qua iCloud Drive** (Lưu toàn bộ API ID, API Hash, ID Kênh và Phiên đăng nhập vào iCloud Drive cá nhân qua ứng dụng Tệp (Files) của iPhone).
+       + Bảng xem trước dữ liệu hiện tại (2x2): API ID (`3713••••`), API Hash (`Đã cấu hình`), ID Kênh (`-100...`), Đăng nhập (`Đã kết nối`).
+       + 3 nút bấm chuẩn mực y hệt InstaPhotos:
+         * Nút 1 (Xanh dương): **"Sao lưu ra iCloud Drive (Tệp)"** - Tự động kích hoạt Web Share API / Capacitor Share xuất file `cloudphotos-backup-YYYY-MM-DD.json` để người dùng lưu trực tiếp vào ứng dụng Tệp / iCloud Drive.
+         * Nút 2 (Xanh lá): **"Khôi phục từ iCloud Drive (Tệp)"** - Mở trình chọn tệp của iOS (Files picker), đọc file JSON khôi phục ngay lập tức toàn bộ API ID, Hash, SĐT và chuỗi Session String mà không cần gửi OTP xác nhận lại. Tương thích chéo với cả file sao lưu xuất từ `InstaPhotos` lẫn `CloudPhotos`.
+         * Nút 3 (Xám đen): **"Sao chép văn bản cấu hình (Clipboard)"** - Sao chép chuỗi JSON vào clipboard bộ nhớ tạm.
+       + Ghi chú chân trang: `💡 File sao lưu có đuôi .json. Bạn có thể lưu vào bất kỳ thư mục nào trên iCloud Drive để khôi phục nhanh khi cài lại máy.`
+     - Tab **"Thông số API"**: Cho phép xem/chỉnh sửa API ID, API Hash, ID Kênh lưu trữ, có banner gợi ý khôi phục từ iCloud Drive nếu chưa cấu hình.
+     - Tab **"Đăng nhập MTProto"**: Quản lý tài khoản Telegram (đăng nhập bằng SĐT, OTP, 2FA, làm mới kho ảnh và đăng xuất an toàn).
+     - Giữ nguyên các tính năng cốt lõi: Bộ nhớ & Dung lượng (Giải phóng dung lượng iPhone, Bộ nhớ đệm offline cache) và Chế độ giao diện (Theme).
+  2. Khắc phục triệt để lỗi không tải được video `Either one of 'buffer' or 'filePath' should be specified`:
+     - **Nguyên nhân gốc rễ**: Khi gọi `client.sendFile` của GramJS với tệp `CustomFile`, nếu dung lượng file $> 20\text{MB}$ (đa số video iPhone nặng từ $25\text{MB}$ đến hàng trăm MB), hàm `uploadFile` nội bộ của GramJS mặc định `maxBufferSize = 20\text{MB} - 1$. Khi `fileSize > maxBufferSize` và file là `CustomFile`, GramJS tự động chuyển sang đọc từ đường dẫn file ổ đĩa (`options.filePath = file.path`). Vì trong WebKit/Capacitor không có đường dẫn tệp Node.js (`file.path` là rỗng), GramJS báo lỗi `Either one of 'buffer' or 'filePath' should be specified`.
+     - **Giải pháp xử lý**: Chuyển sang gọi trực tiếp `client.uploadFile` với tham số `maxBufferSize: 2 * 1024 * 1024 * 1024` ($2\text{GB}$). Cơ chế này ép GramJS luôn đọc trực tiếp dữ liệu từ buffer nhị phân (`options.buffer = Buffer.from(...)`), hỗ trợ upload mượt mà mọi dung lượng video và ảnh lên tới $2\text{GB}$ mà không bao giờ gặp lỗi trên. Sau khi upload, truyền `fileHandle` (`InputFile` / `InputFileBig`) vào `client.sendFile` kèm `supportsStreaming: isVideo`.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/uploadService.ts`: Sử dụng `client.uploadFile` với `maxBufferSize = 2GB`, truyền `fileHandle` vào `client.sendFile`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Tái cấu trúc giao diện theo mẫu chuẩn InstaPhotos với 3 Tab (Thông số API, Đăng nhập MTProto, Sao lưu iCloud), tích hợp đầy đủ Share / Files picker / Clipboard.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` lên `22`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 21)] - 2026-11-14
 - **Commit SHA**: `33b02f4`
 - **Mục tiêu**:

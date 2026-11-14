@@ -231,19 +231,40 @@ export async function uploadPhotosToTelegram(
       // Đọc arrayBuffer và bọc vào CustomFile có Buffer hợp lệ của GramJS
       const rawBuffer = await file.arrayBuffer();
       const nodeBuffer = Buffer.from(rawBuffer);
+      const fileSize = rawBuffer.byteLength;
       const customFile = new CustomFile(
         file.name,
-        file.size || rawBuffer.byteLength,
-        "",
+        fileSize,
+        file.name,
         nodeBuffer
       );
 
-      // Upload trực tiếp lên Telegram
-      const sentMessage: any = await client.sendFile(targetPeer, {
+      // Upload file qua client.uploadFile với maxBufferSize = 2GB
+      // Ngăn ngừa triệt để lỗi 'Either one of `buffer` or `filePath` should be specified'
+      // vốn xảy ra trên WebKit/Capacitor khi video hoặc ảnh vượt quá 20MB
+      const fileHandle = await client.uploadFile({
         file: customFile,
+        workers: 1,
+        maxBufferSize: 2 * 1024 * 1024 * 1024,
+        onProgress: (percent: number) => {
+          if (onProgress) {
+            onProgress({
+              total,
+              current: i + 1,
+              percent: Math.round(((i + percent) / total) * 100),
+              currentFileName: file.name,
+            });
+          }
+        },
+      });
+
+      // Gửi message lên Telegram bằng fileHandle đã upload
+      const sentMessage: any = await client.sendFile(targetPeer, {
+        file: fileHandle,
         caption: captionText,
         forceDocument: false,
         workers: 1,
+        supportsStreaming: isVideo,
       });
 
       const messageId = sentMessage?.id || Date.now();
