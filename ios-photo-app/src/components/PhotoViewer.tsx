@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Share } from "@capacitor/share";
 import { fetchFullResolutionPhoto } from "../services/telegramClient";
@@ -49,6 +51,47 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isGesturing, setIsGesturing] = useState(false);
+
+  // Landscape orientation detection
+  const [isLandscape, setIsLandscape] = useState(
+    typeof window !== "undefined" ? window.innerWidth > window.innerHeight : false
+  );
+
+  useEffect(() => {
+    const checkOrientation = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight);
+    };
+    checkOrientation();
+    window.addEventListener("resize", checkOrientation);
+    window.addEventListener("orientationchange", checkOrientation);
+    return () => {
+      window.removeEventListener("resize", checkOrientation);
+      window.removeEventListener("orientationchange", checkOrientation);
+    };
+  }, []);
+
+  // Dedicated Zoom toggle handler (1x -> 2.2x -> 3.5x -> 1x)
+  const handleToggleZoom = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (photo?.isVideo) return;
+
+    if (scale === 1) {
+      setScale(2.2);
+      setPosition({ x: 0, y: 0 });
+      setSwipeOffset(0);
+      showToast("Đã phóng to 2.2x • Vuốt để di chuyển");
+    } else if (scale < 3) {
+      setScale(3.5);
+      setPosition({ x: 0, y: 0 });
+      setSwipeOffset(0);
+      showToast("Đã phóng to cực đại 3.5x");
+    } else {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+      setSwipeOffset(0);
+      showToast("Đã thu nhỏ về 1x");
+    }
+  };
 
   // Swipe left/right state
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -196,10 +239,11 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
       e.preventDefault();
       const newX = e.touches[0].clientX - touchStartRef.current.x;
       const newY = e.touches[0].clientY - touchStartRef.current.y;
-      const maxOffset = 250 * (scale - 1);
+      const maxOffsetX = (window.innerWidth * 0.55) * (scale - 1);
+      const maxOffsetY = (window.innerHeight * 0.55) * (scale - 1);
       setPosition({
-        x: Math.min(Math.max(newX, -maxOffset), maxOffset),
-        y: Math.min(Math.max(newY, -maxOffset * 1.5), maxOffset * 1.5),
+        x: Math.min(Math.max(newX, -maxOffsetX), maxOffsetX),
+        y: Math.min(Math.max(newY, -maxOffsetY), maxOffsetY),
       });
     } else if (e.touches.length === 1 && scale === 1) {
       const touch = e.touches[0];
@@ -355,47 +399,69 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between select-none">
+    <div className="fixed inset-0 z-50 bg-black select-none overflow-hidden touch-none">
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-24 inset-x-0 mx-auto w-fit z-50 px-4 py-2 bg-neutral-800/95 border border-neutral-700/80 backdrop-blur-xl text-white text-xs font-medium rounded-full shadow-2xl animate-in fade-in duration-200">
+        <div className="fixed top-16 landscape:top-10 inset-x-0 mx-auto w-fit z-50 px-4 py-2 bg-neutral-800/95 border border-neutral-700/80 backdrop-blur-xl text-white text-xs font-medium rounded-full shadow-2xl animate-in fade-in duration-200">
           {toast}
         </div>
       )}
 
       {/* Top Header Bar */}
       <div
-        className={`pt-[var(--sat)] h-20 px-4 flex items-center justify-between bg-black/60 backdrop-blur-md z-20 transition-opacity duration-300 ${
-          uiVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+        className={`absolute top-0 inset-x-0 z-20 flex items-center justify-between transition-all duration-300 ${
+          isLandscape
+            ? "h-14 pt-1 pb-1 bg-gradient-to-b from-black/90 via-black/50 to-transparent"
+            : "pt-[var(--sat)] h-20 bg-black/60 backdrop-blur-md"
+        } ${
+          uiVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
         }`}
+        style={{
+          paddingLeft: "max(var(--sal), 1rem)",
+          paddingRight: "max(var(--sar), 1rem)",
+        }}
       >
         <button
           onClick={onClose}
-          className="flex items-center text-blue-400 active:opacity-60 text-base font-medium -ml-1 py-2 pr-3"
+          className="flex items-center text-blue-400 active:opacity-60 text-sm sm:text-base font-medium py-2 pr-3"
         >
-          <ChevronLeft className="w-6 h-6 mr-0.5" />
+          <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 mr-0.5" />
           <span>Thư viện</span>
         </button>
 
-        <div className="text-center">
-          <p className="text-sm font-semibold text-white">
+        <div className="text-center px-2">
+          <p className="text-xs sm:text-sm font-semibold text-white truncate max-w-[200px] sm:max-w-xs">
             {photo.date.toLocaleDateString("vi-VN", {
               day: "numeric",
               month: "short",
               year: "numeric",
             })}
           </p>
-          <p className="text-xs text-neutral-400 font-medium">
-            {currentIndex + 1} / {allPhotos.length}
-          </p>
+          <div className="flex items-center justify-center gap-1.5 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-neutral-400 font-medium">
+              {currentIndex + 1} / {allPhotos.length}
+            </p>
+            {hdUrl && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-950/80 border border-emerald-500/40 text-[10px] text-emerald-300 font-medium rounded-full">
+                <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                HD
+              </span>
+            )}
+            {loadingHd && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-blue-950/80 border border-blue-500/40 text-[10px] text-blue-300 font-medium rounded-full">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin text-blue-400" />
+                HD...
+              </span>
+            )}
+          </div>
         </div>
 
         <button
           onClick={handleShare}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-neutral-800 text-blue-400 active:opacity-60"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full bg-neutral-800/80 text-blue-400 active:opacity-60 backdrop-blur-sm"
           title="Chia sẻ ảnh"
         >
-          <Share2 className="w-5 h-5" />
+          <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
 
@@ -405,10 +471,11 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
         onClick={() => {
           if (scale === 1) setUiVisible(!uiVisible);
         }}
+        onDoubleClick={handleToggleZoom}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="relative flex-1 flex items-center justify-center overflow-hidden cursor-pointer touch-none"
+        className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden cursor-pointer touch-none z-10"
       >
         {photo.isVideo ? (
           <div
@@ -422,7 +489,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
               playsInline
               autoPlay
               loop
-              className="max-w-full max-h-[82vh] rounded-2xl shadow-2xl object-contain pointer-events-auto"
+              className="max-w-full max-h-full sm:rounded-2xl shadow-2xl object-contain pointer-events-auto"
             />
           </div>
         ) : (
@@ -438,20 +505,6 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
           />
         )}
 
-        {loadingHd && (
-          <div className="absolute top-24 right-4 bg-black/60 border border-neutral-700/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 text-xs text-neutral-300 pointer-events-none">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-400" />
-            <span>Đang tải HD...</span>
-          </div>
-        )}
-
-        {hdUrl && (
-          <div className="absolute top-24 right-4 bg-emerald-950/70 border border-emerald-500/40 backdrop-blur-md px-2.5 py-1 rounded-full flex items-center gap-1.5 text-[11px] text-emerald-300 pointer-events-none">
-            <Sparkles className="w-3 h-3 text-emerald-400" />
-            <span>HD Cực nét</span>
-          </div>
-        )}
-
         {/* Navigation Arrows for Mobile & Desktop */}
         {hasPrev && scale === 1 && (
           <button
@@ -459,7 +512,8 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
               e.stopPropagation();
               handlePrev();
             }}
-            className={`absolute left-3 w-10 h-10 rounded-full bg-black/50 border border-neutral-700/60 text-white active:scale-90 backdrop-blur-md z-10 transition-all flex items-center justify-center ${
+            style={{ left: "max(var(--sal), 0.75rem)" }}
+            className={`absolute top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 border border-neutral-700/60 text-white active:scale-90 backdrop-blur-md z-20 transition-all flex items-center justify-center ${
               uiVisible ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
             title="Ảnh trước"
@@ -473,7 +527,8 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
               e.stopPropagation();
               handleNext();
             }}
-            className={`absolute right-3 w-10 h-10 rounded-full bg-black/50 border border-neutral-700/60 text-white active:scale-90 backdrop-blur-md z-10 transition-all flex items-center justify-center ${
+            style={{ right: "max(var(--sar), 0.75rem)" }}
+            className={`absolute top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 border border-neutral-700/60 text-white active:scale-90 backdrop-blur-md z-20 transition-all flex items-center justify-center ${
               uiVisible ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
             title="Ảnh tiếp theo"
@@ -483,11 +538,31 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
         )}
       </div>
 
+      {/* Floating Zoom Indicator Pill */}
+      {scale > 1 && (
+        <button
+          onClick={handleToggleZoom}
+          className="absolute bottom-22 landscape:bottom-16 inset-x-0 mx-auto w-fit z-30 px-3.5 py-1.5 bg-black/85 border border-white/20 backdrop-blur-md text-white text-xs font-semibold rounded-full shadow-2xl flex items-center gap-1.5 active:scale-95 transition-all"
+          title="Nhấn để thu nhỏ về 1x"
+        >
+          <ZoomOut className="w-3.5 h-3.5 text-blue-400" />
+          <span>{scale.toFixed(1)}x • Chạm để thu nhỏ</span>
+        </button>
+      )}
+
       {/* Bottom Action Bar (Apple Photos style) */}
       <div
-        className={`pb-[var(--sab)] h-20 px-8 flex items-center justify-between bg-black/60 backdrop-blur-md z-20 transition-opacity duration-300 ${
-          uiVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+        className={`absolute bottom-0 inset-x-0 z-20 flex items-center justify-between transition-all duration-300 ${
+          isLandscape
+            ? "h-14 pb-1 pt-1 bg-gradient-to-t from-black/90 via-black/60 to-transparent"
+            : "pb-[var(--sab)] h-20 bg-black/60 backdrop-blur-md"
+        } ${
+          uiVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
+        style={{
+          paddingLeft: isLandscape ? "max(var(--sal), 2.5rem)" : "2rem",
+          paddingRight: isLandscape ? "max(var(--sar), 2.5rem)" : "2rem",
+        }}
       >
         {/* Nút Trái tim (Yêu thích) */}
         <button
@@ -504,6 +579,23 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
           <Heart className={`w-6 h-6 ${isFavorite ? "fill-red-500 text-red-500 scale-110" : ""}`} />
         </button>
 
+        {/* Nút Phóng to / Thu nhỏ ảnh */}
+        {!photo.isVideo && (
+          <button
+            onClick={handleToggleZoom}
+            className={`p-2 transition-transform active:scale-125 ${
+              scale > 1 ? "text-blue-400" : "text-neutral-300 active:opacity-60"
+            }`}
+            title={scale > 1 ? "Thu nhỏ về 1x" : "Phóng to ảnh"}
+          >
+            {scale > 1 ? (
+              <ZoomOut className="w-6 h-6 text-blue-400" />
+            ) : (
+              <ZoomIn className="w-6 h-6 text-neutral-300" />
+            )}
+          </button>
+        )}
+
         {/* Nút Thông tin (i) */}
         <button
           onClick={(e) => {
@@ -511,6 +603,7 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
             setShowInfo(true);
           }}
           className="p-2 text-neutral-300 active:opacity-60"
+          title="Chi tiết ảnh"
         >
           <Info className="w-6 h-6" />
         </button>
@@ -543,7 +636,11 @@ export const PhotoViewer: React.FC<PhotoViewerProps> = ({
       {showInfo && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute inset-x-0 bottom-0 z-40 bg-neutral-900/95 backdrop-blur-2xl rounded-t-3xl p-6 border-t border-neutral-800 text-white max-h-[75vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+          className="absolute inset-x-0 bottom-0 z-40 bg-neutral-900/95 backdrop-blur-2xl rounded-t-3xl p-6 border-t border-neutral-800 text-white max-h-[80vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+          style={{
+            paddingLeft: "max(var(--sal), 1.5rem)",
+            paddingRight: "max(var(--sar), 1.5rem)",
+          }}
         >
           <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
             <h3 className="text-lg font-bold">Chi tiết ảnh Instagram</h3>

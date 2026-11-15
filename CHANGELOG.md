@@ -4,6 +4,37 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v1.3 (Build 25)] - 2026-11-15
+- **Commit SHA**: `765f155`
+- **Mục tiêu**:
+  1. **Tối ưu hóa toàn diện giao diện khi xoay ngang (Landscape Mode Optimization)**:
+     - **Nguyên nhân gốc rễ**:
+       + Trước đây, trình xem ảnh `PhotoViewer` sử dụng cấu trúc `flex flex-col`, trong đó thanh tiêu đề trên chiếm cố định `h-20` (80px) và thanh công cụ dưới chiếm `h-20` (80px), tổng cộng ngốn đến 160px chiều cao.
+       + Khi xoay ngang điện thoại iPhone, chiều cao màn hình chỉ có khoảng 390px - 430px. Việc bị chiếm mất 160px khiến khung chứa ảnh bị co ép chỉ còn chưa tới 230px, làm ảnh hiển thị rất bé, xuất hiện hai khoảng trống đen lớn hai bên. Khi chạm vào màn hình để ẩn thanh công cụ thì các thanh này chỉ đổi `opacity-0` chứ không nhả chiều cao flexbox, khiến ảnh không thể mở rộng toàn màn hình.
+       + Huy hiệu "✨ HD Cực nét" đặt ở vị trí `top-24 right-4` bị va chạm và đè thẳng lên nút chuyển ảnh `>` ở cạnh phải khi ở chế độ xoay ngang.
+       + Nút điều hướng hai bên (`<` và `>`) nằm sát mép (12px), bị Dynamic Island / tai thỏ của iPhone che khuất khi xoay ngang.
+     - **Giải pháp xử lý triệt để**:
+       + Tái cấu trúc trình xem ảnh: Khung ảnh chiếm trọn vẹn 100% diện tích màn hình `absolute inset-0 w-full h-full`, cho phép ảnh và video tự do bung rộng tối đa cả chiều ngang lẫn chiều dọc (Full-Screen Edge-to-Edge).
+       + Thanh tiêu đề trên và thanh hành động dưới được chuyển thành lớp phủ kính mờ thông minh (Overlay Glassmorphism), tự động thu gọn chiều cao xuống `h-14` khi ở chế độ xoay ngang và tự trượt ẩn hoàn toàn (`-translate-y-4` / `translate-y-4`) khi người dùng chạm xem toàn màn hình.
+       + Áp dụng vùng an toàn ngang động `max(var(--sal), ...)` và `max(var(--sar), ...)`, bảo vệ các nút bấm khỏi bị tai thỏ hay Dynamic Island che khuất.
+       + Tích hợp huy hiệu HD trực tiếp vào cụm thông tin ngày tháng ở thanh tiêu đề, triệt tiêu 100% tình trạng che đè nút bấm điều hướng.
+  2. **Bổ sung Nút Phóng to / Thu nhỏ ảnh chuyên dụng (Dedicated Zoom Button)**:
+     - Bổ sung nút Phóng to (`ZoomIn` / `ZoomOut`) ngay trên thanh công cụ dưới của trình xem ảnh.
+     - Chu kỳ phóng to 3 nấc mượt mà: `1x -> 2.2x -> 3.5x (cực đại) -> 1x` kèm hiệu ứng thông báo trạng thái.
+     - Hiển thị nút viên thuốc nổi báo tỷ lệ zoom khi đang phóng to: `[ 🔍 2.2x • Chạm để thu nhỏ ]`, cho phép người dùng chỉ cần chạm 1 chạm để quay về 1x lập tức mà không cần chụm hai ngón tay.
+     - Hỗ trợ cả thao tác đúp chạm (double-tap / double-click) để phóng to/thu nhỏ nhanh.
+     - Nâng cấp thuật toán kéo rê ảnh (pan) theo tỷ lệ kích thước thực tế của màn hình xoay ngang, giúp lướt xem từng chi tiết ảnh cực kỳ mượt mà.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/PhotoViewer.tsx`: Viết lại kiến trúc layout tràn viền toàn màn hình, thanh overlay linh hoạt khi xoay ngang, thêm nút và thanh điều khiển phóng to chuyên dụng, tích hợp huy hiệu HD vào thanh tiêu đề.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị `Build 25`.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Cập nhật `CURRENT_PROJECT_VERSION` thành `25`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v1.3 (Build 24)] - 2026-11-14
 - **Commit SHA**: `ba8fd16`
 - **Mục tiêu**:
