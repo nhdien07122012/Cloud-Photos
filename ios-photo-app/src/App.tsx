@@ -460,7 +460,7 @@ export function App() {
         onNavigateHome={() => setCurrentFolder("/")}
         isLoggedIn={!!config.isLoggedIn}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        channelTitle={config.channelId || "IPA-MOD [DienNguyen]"}
+        channelTitle={config.channelTitle || config.channelId || "IPA-MOD [DienNguyen]"}
       />
 
       {/* Main File Content Body */}
@@ -557,13 +557,14 @@ export function App() {
         onSave={(newCfg) => {
           setConfig(newCfg);
           saveStoredConfig(newCfg);
-          showToast("Đã lưu cấu hình Cloud Drive thành công!");
+          setFiles([]);
+          showToast(`Đang chuyển sang: ${newCfg.channelTitle || newCfg.channelId || "Kênh mới"}...`);
           refreshFilesFromChannel(true, newCfg);
         }}
         theme={theme}
         onThemeChange={setTheme}
         isDarkMode={theme === "dark"}
-        onRefreshPhotos={() => refreshFilesFromChannel(true)}
+        onRefreshPhotos={(customCfg) => refreshFilesFromChannel(true, customCfg || config)}
       />
 
       {/* Bottom Navigation Tab Bar */}

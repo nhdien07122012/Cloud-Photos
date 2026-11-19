@@ -67,6 +67,18 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
     { key: "starred", label: "⭐ Đã gắn sao" },
   ];
 
+  // Lọc bỏ ID số, chỉ hiển thị tên kênh thân thiện, gọn gàng (không bao giờ hiện ID -100...)
+  const cleanChannelDisplay = React.useMemo(() => {
+    const raw = (channelTitle || "").trim();
+    // Nếu rỗng hoặc chỉ là số/ID âm (-100..., 1234...)
+    if (!raw || /^-?\d+$/.test(raw)) {
+      return "Đổi kênh";
+    }
+    // Rút gọn nếu tên có phần đuôi trong ngoặc vuông [DienNguyen] để hiển thị gọn gàng
+    const simplified = raw.replace(/\[.*?\]/g, "").trim();
+    return simplified || raw;
+  }, [channelTitle]);
+
   return (
     <header className="sticky top-0 z-30 bg-neutral-950/85 backdrop-blur-xl border-b border-neutral-800/80 pt-[var(--sat)] select-none">
       {/* Top Bar: Title & Stats & Status */}
@@ -80,12 +92,12 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
             </h1>
             <button
               onClick={onOpenSettings}
-              className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-blue-500/15 text-blue-400 border border-blue-500/25 max-w-[170px] truncate flex items-center gap-1 active:scale-95 transition-transform hover:bg-blue-500/25 cursor-pointer"
-              title="Đổi kênh lưu trữ Telegram"
+              className="h-6 px-2.5 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 max-w-[110px] sm:max-w-[140px] flex items-center gap-1 active:scale-95 transition-transform hover:bg-blue-500/25 cursor-pointer shrink-0"
+              title={`Kênh lưu trữ: ${channelTitle || "IPA-MOD [DienNguyen]"}. Chạm để đổi kênh.`}
             >
-              <span className="text-xs">📢</span>
-              <span className="truncate">{channelTitle || "IPA-MOD [DienNguyen]"}</span>
-              <span className="text-[9px] opacity-70">▼</span>
+              <span className="text-[10px]">📢</span>
+              <span className="truncate">{cleanChannelDisplay}</span>
+              <span className="text-[8px] opacity-70">▼</span>
             </button>
           </div>
 

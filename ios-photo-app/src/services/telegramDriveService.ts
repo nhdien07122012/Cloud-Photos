@@ -13,6 +13,7 @@ import {
   saveCachedFileData,
   getCachedFileData,
   removeFileFromCache,
+  clearDriveCache,
 } from "./fileStorage";
 import { Buffer } from "buffer";
 
@@ -205,6 +206,124 @@ export async function fetchUserChannels(
   }
 }
 
+export interface ResolvedPeerInfo {
+  peer: any;
+  title: string;
+  id: string;
+}
+
+/**
+ * Phân giải Kênh Telegram thông minh:
+ * Hỗ trợ: Tên Kênh ("IPA-MOD [DienNguyen]"), Username ("@channel"), hoặc ID số ("-1004288667686")
+ */
+export async function resolveChannelPeer(
+  client: any,
+  channelInput?: string
+): Promise<ResolvedPeerInfo | null> {
+  const input = (channelInput || "").trim();
+  if (!input) return null;
+
+  // 1. Quét danh sách dialogs của tài khoản (lấy đến 200 dialogs)
+  try {
+    const dialogs: any = await client.getDialogs({ limit: 200 });
+    const rawInputId = input.replace(/^-100/, "").replace(/^-/, "").trim();
+    const isPureNumeric = /^\d+$/.test(rawInputId);
+    const normInput = input.toLowerCase().replace(/[\[\]\(\)\{\}\-_\s]+/g, " ").trim();
+
+    for (const d of dialogs) {
+      const isChannelOrGroup =
+        d.isChannel ||
+        d.isGroup ||
+        (d.entity && (d.entity.className === "Channel" || d.entity.className === "Chat"));
+      if (!isChannelOrGroup && !d.entity) continue;
+
+      const dTitle = (d.title || d.name || d.entity?.title || "").trim();
+      const normDTitle = dTitle.toLowerCase().replace(/[\[\]\(\)\{\}\-_\s]+/g, " ").trim();
+      const dUsername = (d.entity?.username || "").trim().toLowerCase();
+      const dIdStr = (d.id?.toString() || "").trim();
+      const dEntityIdStr = (d.entity?.id?.toString() || "").trim();
+      const rawDId = dIdStr.replace(/^-100/, "").replace(/^-/, "").trim();
+      const rawEntityId = dEntityIdStr.replace(/^-100/, "").replace(/^-/, "").trim();
+
+      // So khớp 1: Trùng ID số (bỏ qua tiền tố -100 hoặc -)
+      if (isPureNumeric && (rawInputId === rawDId || rawInputId === rawEntityId)) {
+        return {
+          peer: d.inputEntity || d.entity,
+          title: dTitle || "Kênh lưu trữ",
+          id: dIdStr || dEntityIdStr,
+        };
+      }
+
+      // So khớp 2: Trùng Username (@...)
+      if (dUsername && input.toLowerCase().replace("@", "") === dUsername) {
+        return {
+          peer: d.inputEntity || d.entity,
+          title: dTitle || `@${dUsername}`,
+          id: dIdStr || dEntityIdStr,
+        };
+      }
+
+      // So khớp 3: Trùng tên kênh chuẩn hóa (bỏ qua dấu ngoặc vuông, gạch ngang, khoảng trắng)
+      if (normInput && (normDTitle === normInput || dTitle.toLowerCase() === input.toLowerCase())) {
+        return {
+          peer: d.inputEntity || d.entity,
+          title: dTitle,
+          id: dIdStr || dEntityIdStr,
+        };
+      }
+
+      // So khớp 4: Chứa chuỗi tên kênh (Ví dụ "IPA-MOD" nằm trong "IPA-MOD [DienNguyen]")
+      if (
+        normInput.length >= 3 &&
+        (normDTitle.includes(normInput) || normInput.includes(normDTitle))
+      ) {
+        return {
+          peer: d.inputEntity || d.entity,
+          title: dTitle,
+          id: dIdStr || dEntityIdStr,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Lỗi khi tìm kiếm kênh qua getDialogs:", err);
+  }
+
+  // 2. Thử lấy InputEntity hoặc Entity trực tiếp
+  try {
+    const inputEntity = await client.getInputEntity(input);
+    if (inputEntity) {
+      return { peer: inputEntity, title: input, id: input };
+    }
+  } catch {}
+
+  try {
+    const entity = await client.getEntity(input);
+    if (entity) {
+      const title = entity.title || entity.username || input;
+      return { peer: entity, title, id: entity.id?.toString() || input };
+    }
+  } catch {}
+
+  // 3. Nếu là chuỗi số có dấu âm hoặc bắt đầu bằng -100
+  const rawId = input.replace(/^-100/, "").replace(/^-/, "").trim();
+  if (/^\d+$/.test(rawId)) {
+    try {
+      const entity = await client.getEntity(BigInt("-100" + rawId));
+      if (entity) {
+        return { peer: entity, title: entity.title || "Kênh lưu trữ", id: input };
+      }
+    } catch {}
+    try {
+      const entity = await client.getEntity(BigInt(rawId));
+      if (entity) {
+        return { peer: entity, title: entity.title || "Kênh lưu trữ", id: input };
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 /**
  * Tự động tìm Kênh Cloud Drive trong danh sách hội thoại
  */
@@ -213,7 +332,7 @@ export async function autoDetectDriveChannel(
 ): Promise<{ id: string; title: string } | null> {
   try {
     const client = await initDriveClient(config);
-    const dialogs: any = await client.getDialogs({});
+    const dialogs: any = await client.getDialogs({ limit: 100 });
     for (const d of dialogs) {
       const title = (d.title || d.name || "").toLowerCase();
       if (
@@ -263,50 +382,36 @@ export async function fetchDriveFiles(
       if (detected) {
         channelId = detected.id;
         config.channelId = detected.id;
+        config.channelTitle = detected.title;
         saveStoredConfig(config);
       }
     }
 
     if (!channelId) {
       const fallbackFiles = await getCachedFiles();
-      return fallbackFiles.length > 0 ? fallbackFiles : SAMPLE_FILES;
+      return fallbackFiles.length > 0 ? fallbackFiles : [];
     }
 
-    // Phân giải targetPeer: Hỗ trợ cả numeric ID (-100...), username (@channel) và Tên Kênh (như "IPA-MOD [DienNguyen]")
-    let targetPeer: any = null;
+    // Kiểm tra xem người dùng có đổi sang kênh khác không
+    const lastChannelKey = "teledrive_active_channel_id";
+    const previousChannel = localStorage.getItem(lastChannelKey);
+    const isChannelSwitch = previousChannel && previousChannel !== channelId;
 
-    // 1. Nếu người dùng nhập tên kênh (ví dụ: "IPA-MOD [DienNguyen]")
-    try {
-      const dialogs: any = await client.getDialogs({ limit: 100 });
-      const found = dialogs.find(
-        (d: any) =>
-          d.id?.toString() === channelId ||
-          (d.title || d.name || "").toLowerCase() === channelId.toLowerCase() ||
-          (d.entity?.title || "").toLowerCase() === channelId.toLowerCase() ||
-          (d.entity?.username || "").toLowerCase() === channelId.replace("@", "").toLowerCase()
-      );
-      if (found) {
-        targetPeer = found.entity || found;
-        if (found.id) {
-          channelId = found.id.toString();
-          config.channelId = channelId;
-          saveStoredConfig(config);
-        }
-      }
-    } catch (e) {
-      console.warn("Quét dialogs khi resolve channel:", e);
+    if (isChannelSwitch) {
+      // Khi đổi kênh: Xóa sạch cache của kênh cũ để nạp toàn bộ tệp của kênh mới
+      await clearDriveCache();
     }
+    localStorage.setItem(lastChannelKey, channelId);
 
-    // 2. Nếu chưa tìm được qua dialogs, thử resolve trực tiếp bằng getEntity
-    if (!targetPeer) {
-      try {
-        targetPeer = await client.getEntity(channelId);
-      } catch {
-        try {
-          targetPeer = await client.getEntity(BigInt(channelId));
-        } catch {
-          targetPeer = channelId;
-        }
+    // Phân giải Kênh Telegram thông minh
+    const resolved = await resolveChannelPeer(client, channelId);
+    const targetPeer: any = resolved ? resolved.peer : channelId;
+
+    // Cập nhật tên hiển thị thân thiện (không lưu ID số xấu xí)
+    if (resolved && resolved.title) {
+      if (config.channelTitle !== resolved.title) {
+        config.channelTitle = resolved.title;
+        saveStoredConfig(config);
       }
     }
 
@@ -373,17 +478,15 @@ export async function fetchDriveFiles(
         // Phân loại tệp
         const category = getFileCategory(extension, mimeType);
 
-        // Tải thumbnail nếu là ảnh hoặc video
+        // Tải thumbnail nếu là ảnh hoặc video (với timeout 1.5s để không làm nghẽn tiến trình)
         let thumbBuffer: any = null;
-        if (category === "image" || category === "video" || category === "document") {
+        if (category === "image" || category === "video") {
           try {
-            thumbBuffer = await client.downloadMedia(msg.media, { thumb: 1 });
+            thumbBuffer = await Promise.race([
+              client.downloadMedia(msg.media, { thumb: 1 }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500)),
+            ]);
           } catch {}
-          if (!thumbBuffer || thumbBuffer.length < 100) {
-            try {
-              thumbBuffer = await client.downloadMedia(msg.media, { thumb: 0 });
-            } catch {}
-          }
         }
 
         const fileDate = msg.date ? msg.date * 1000 : Date.now();
@@ -409,12 +512,12 @@ export async function fetchDriveFiles(
 
     // 4. Trả về toàn bộ tệp từ IndexedDB đã cập nhật
     const updatedFiles = await getCachedFiles();
-    return updatedFiles.length > 0 ? updatedFiles : SAMPLE_FILES;
+    return updatedFiles;
   } catch (error: any) {
     console.error("Lỗi lấy tệp từ Telegram Drive:", error);
     const fallbackFiles = await getCachedFiles();
     if (fallbackFiles.length > 0) return fallbackFiles;
-    return SAMPLE_FILES;
+    throw new Error(error.message || "Không thể tải danh sách tệp từ Kênh");
   }
 }
 
@@ -444,12 +547,8 @@ export async function downloadTelegramFile(
 
   // 2. Tải trực tiếp từ Telegram MTProto
   const client = await initDriveClient(config);
-  let targetPeer: any = config.channelId;
-  try {
-    targetPeer = await client.getEntity(config.channelId);
-  } catch {
-    targetPeer = config.channelId;
-  }
+  const resolved = await resolveChannelPeer(client, config.channelId);
+  const targetPeer: any = resolved ? resolved.peer : config.channelId;
 
   const messages = await client.getMessages(targetPeer, { ids: [messageId] });
   if (!messages || !messages[0] || !messages[0].media) {
@@ -492,17 +591,8 @@ export async function uploadDriveFile(
   onProgress?: (percent: number, speed: string) => void
 ): Promise<CloudFile> {
   const client = await initDriveClient(config);
-
-  let targetPeer: any = config.channelId;
-  try {
-    targetPeer = await client.getEntity(config.channelId);
-  } catch {
-    try {
-      targetPeer = await client.getEntity(BigInt(config.channelId));
-    } catch {
-      targetPeer = config.channelId;
-    }
-  }
+  const resolved = await resolveChannelPeer(client, config.channelId);
+  const targetPeer: any = resolved ? resolved.peer : config.channelId;
 
   const { CustomFile } = await import("telegram/client/uploads");
 
@@ -598,16 +688,8 @@ export async function deleteDriveFiles(
   if (config.sessionString || config.isLoggedIn) {
     try {
       const client = await initDriveClient(config);
-      let targetPeer: any = config.channelId;
-      try {
-        targetPeer = await client.getEntity(config.channelId);
-      } catch {
-        try {
-          targetPeer = await client.getEntity(BigInt(config.channelId));
-        } catch {
-          targetPeer = config.channelId;
-        }
-      }
+      const resolved = await resolveChannelPeer(client, config.channelId);
+      const targetPeer: any = resolved ? resolved.peer : config.channelId;
 
       await client.deleteMessages(targetPeer, messageIds, { revoke: true });
       deleted = true;

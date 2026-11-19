@@ -4,6 +4,36 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 28)] - 2026-11-19
+- **Commit SHA**: `a030f5c`
+- **Mục tiêu**:
+  1. **Khắc phục triệt để lỗi chuyển kênh không load lại được các file trong kênh mới**:
+     - **Nguyên nhân cốt lõi**:
+       + Cơ chế lưu trữ IndexedDB trước đây lưu chung tất cả tệp vào bảng `cached_files` mà không phân loại theo kênh. Khi đổi kênh, `getCachedFiles()` vẫn trả về toàn bộ tệp của kênh cũ, đồng thời cơ chế kiểm tra `cachedIds.has(msg.id)` đã bỏ qua các tin nhắn mới của kênh vừa chọn do trùng ID số.
+       + Khi giải mã kênh, GramJS không thể tìm trực tiếp tên kênh như `"IPA-MOD [DienNguyen]"` qua `getEntity` thông thường (chỉ chấp nhận username hoặc ID số), dẫn đến việc văng lỗi và kích hoạt khối catch ngầm trả về file cache cũ mà không thông báo cho người dùng.
+       + Việc lưu đè ID số âm (`-100...`) vào cấu hình làm mất tên hiển thị của kênh và gây lỗi truy xuất tin nhắn trong các phiên tiếp theo nếu entity chưa được cache.
+     - **Giải pháp xử lý toàn diện**:
+       + Triển khai hàm phân giải kênh thông minh `resolveChannelPeer()`: Quét toàn bộ danh sách hội thoại (lên đến 200 dialogs), so khớp đa tầng từ ID số, Username, Tên chính xác, Tên chuẩn hóa (loại bỏ dấu ngoặc, khoảng trắng), và tìm chuỗi tương đối (`IPA-MOD`). Trích xuất chính xác `inputEntity` kèm `accessHash` bảo đảm 100% quyền truy cập.
+       + Bổ sung cơ chế phát hiện chuyển kênh tự động (`isChannelSwitch`): Ngay khi người dùng chuyển sang kênh khác, hệ thống tự động làm sạch bộ nhớ đệm kênh cũ bằng `clearDriveCache()` và giải phóng UI để tải nạp toàn bộ danh sách tệp mới tinh từ kênh vừa chọn.
+       + Bổ sung cơ chế timeout 1.5s khi tải thumbnail media, triệt tiêu nguy cơ treo vòng lặp đồng bộ.
+  2. **Thu gọn nút chuyển kênh trên thanh tiêu đề và ẩn hoàn toàn ID kênh số xấu xí**:
+     - **Tối ưu hiển thị**: Lọc bỏ mọi chuỗi số âm hoặc ID định dạng Telegram (`/^-?\d+$/`), tuyệt đối không bao giờ hiển thị ID số trên giao diện.
+     - Tự động rút gọn tên kênh hiển thị trên thanh tiêu đề (ví dụ: `"IPA-MOD [DienNguyen]"` $\to$ `"IPA-MOD"`), với kích thước gọn gàng `h-6 px-2.5`, vừa vặn trên mọi màn hình iPhone từ nhỏ đến lớn mà không che lấp các nút bấm khác.
+     - Cập nhật hiển thị tên kênh thân thiện trên toàn bộ các tab Cài đặt (Thông số API, Đăng nhập MTProto, Sao lưu iCloud).
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/types/index.ts`: Bổ sung `channelTitle?: string` trong `TelegramConfig`.
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Thêm `resolveChannelPeer()`, xử lý dọn cache khi chuyển kênh, cập nhật `fetchDriveFiles()`, `uploadDriveFile()`, `downloadTelegramFile()`, `deleteDriveFiles()`.
+  - `ios-photo-app/src/components/DriveHeader.tsx`: Thiết kế lại nút chuyển kênh siêu gọn `cleanChannelDisplay`, loại bỏ hiển thị ID.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Tách biệt lưu `channelTitle` và `channelId`, ẩn ID số trong danh sách kênh, nâng cấp Build 28.
+  - `ios-photo-app/src/App.tsx`: Làm mới UI tức thì khi chuyển kênh (`setFiles([])`) và cập nhật kênh mới.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 28.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 27)] - 2026-11-19
 - **Commit SHA**: `ca105ca`
 - **Mục tiêu**:

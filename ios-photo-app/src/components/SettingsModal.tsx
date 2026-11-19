@@ -49,7 +49,7 @@ interface SettingsModalProps {
   onThemeChange: (theme: ThemeMode) => void;
   isDarkMode: boolean;
   photos?: PhotoItem[];
-  onRefreshPhotos?: () => void;
+  onRefreshPhotos?: (customConfig?: TelegramConfig) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -446,7 +446,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
     onSave(formData);
     setSavedSuccess(true);
-    if (onRefreshPhotos) onRefreshPhotos();
+    if (onRefreshPhotos) onRefreshPhotos(formData);
 
     if (!formData.isLoggedIn && formData.apiId && formData.apiHash) {
       setTimeout(() => {
@@ -457,7 +457,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else {
       setTimeout(() => {
         setSavedSuccess(false);
-        setStatusMsg(`Đã lưu cấu hình và Kênh "${formData.channelId || "mặc định"}" thành công!`);
+        setStatusMsg(`Đã chọn Kênh "${formData.channelTitle || formData.channelId || "mặc định"}" thành công!`);
       }, 500);
     }
   };
@@ -684,11 +684,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setFormData({ ...formData, channelId: "IPA-MOD [DienNguyen]" });
+                    setFormData({
+                      ...formData,
+                      channelId: "IPA-MOD [DienNguyen]",
+                      channelTitle: "IPA-MOD [DienNguyen]",
+                    });
                     setStatusMsg("Đã chọn Kênh: IPA-MOD [DienNguyen]");
                   }}
                   className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
-                    formData.channelId === "IPA-MOD [DienNguyen]"
+                    formData.channelId === "IPA-MOD [DienNguyen]" || formData.channelTitle === "IPA-MOD [DienNguyen]"
                       ? "bg-blue-600 text-white border-blue-500 shadow-sm"
                       : "bg-neutral-800/90 text-blue-400 border-neutral-700 hover:border-neutral-600"
                   }`}
@@ -698,11 +702,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setFormData({ ...formData, channelId: "Cloud Drive Telegram" });
-                    setStatusMsg("Đã chọn Kênh: Cloud Drive Telegram");
+                    setFormData({
+                      ...formData,
+                      channelId: "Cloud Drive Telegram",
+                      channelTitle: "Cloud Drive",
+                    });
+                    setStatusMsg("Đã chọn Kênh: Cloud Drive");
                   }}
                   className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
-                    formData.channelId === "Cloud Drive Telegram"
+                    formData.channelId === "Cloud Drive Telegram" || formData.channelTitle === "Cloud Drive"
                       ? "bg-blue-600 text-white border-blue-500 shadow-sm"
                       : "bg-neutral-800/90 text-purple-400 border-neutral-700 hover:border-neutral-600"
                   }`}
@@ -712,11 +720,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setFormData({ ...formData, channelId: "Kho ảnh đồng bộ Telegram" });
-                    setStatusMsg("Đã chọn Kênh: Kho ảnh đồng bộ Telegram");
+                    setFormData({
+                      ...formData,
+                      channelId: "Kho ảnh đồng bộ Telegram",
+                      channelTitle: "Kho ảnh đồng bộ",
+                    });
+                    setStatusMsg("Đã chọn Kênh: Kho ảnh đồng bộ");
                   }}
                   className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
-                    formData.channelId === "Kho ảnh đồng bộ Telegram"
+                    formData.channelId === "Kho ảnh đồng bộ Telegram" || formData.channelTitle === "Kho ảnh đồng bộ"
                       ? "bg-blue-600 text-white border-blue-500 shadow-sm"
                       : "bg-neutral-800/90 text-emerald-400 border-neutral-700 hover:border-neutral-600"
                   }`}
@@ -735,13 +747,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     const isSelected =
                       formData.channelId === c.id ||
                       formData.channelId === c.title ||
+                      formData.channelTitle === c.title ||
                       (c.username && formData.channelId === `@${c.username}`);
                     return (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => {
-                          setFormData({ ...formData, channelId: c.title || c.id });
+                          setFormData({
+                            ...formData,
+                            channelId: c.title || c.id,
+                            channelTitle: c.title,
+                          });
                           setStatusMsg(`Đã chọn Kênh "${c.title}"`);
                         }}
                         className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
@@ -751,7 +768,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }`}
                       >
                         <span className="truncate">{c.title}</span>
-                        <span className="text-[10px] opacity-70 font-mono ml-2 shrink-0">{c.id}</span>
+                        {c.username && (
+                          <span className="text-[10px] opacity-70 font-mono ml-2 shrink-0">@{c.username}</span>
+                        )}
                       </button>
                     );
                   })}
@@ -760,11 +779,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <input
                 type="text"
-                placeholder="Ví dụ: IPA-MOD [DienNguyen] hoặc ID: -1004288667686"
+                placeholder="Ví dụ: IPA-MOD [DienNguyen] hoặc @username"
                 value={formData.channelId}
-                onChange={(e) =>
-                  setFormData({ ...formData, channelId: e.target.value })
-                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({
+                    ...formData,
+                    channelId: val,
+                    channelTitle: !/^-?\d+$/.test(val.trim()) ? val.trim() : formData.channelTitle,
+                  });
+                }}
                 className={`w-full rounded-2xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isDarkMode
                     ? "bg-neutral-800/80 border border-neutral-700 text-white"
@@ -828,7 +852,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   SĐT: <strong>{formData.phoneNumber || phone}</strong>
                 </p>
                 <p className="text-xs text-blue-400 font-semibold mt-0.5">
-                  Kênh đang dùng: <strong>{formData.channelId || "Tự động nhận diện"}</strong>
+                  Kênh đang dùng: <strong>{formData.channelTitle || (!/^-?\d+$/.test(formData.channelId || "") ? formData.channelId : "Kênh Telegram")}</strong>
                 </p>
 
                 <div className="mt-4 flex flex-col gap-2.5">
@@ -1045,9 +1069,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       : "bg-white border-neutral-200"
                   }`}
                 >
-                  <span className="text-neutral-500 block text-[11px] sm:text-xs">ID Kênh:</span>
-                  <span className="font-mono font-bold truncate block">
-                    {formData.channelId || "(Chưa có)"}
+                  <span className="text-neutral-500 block text-[11px] sm:text-xs">Kênh lưu trữ:</span>
+                  <span className="font-semibold truncate block">
+                    {formData.channelTitle || (!/^-?\d+$/.test(formData.channelId || "") ? formData.channelId : "Kênh cá nhân")}
                   </span>
                 </div>
                 <div
@@ -1317,7 +1341,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25 block">
-                Build 27
+                Build 28
               </span>
               <span className="text-[10px] text-neutral-500 block mt-0.5">iOS Native</span>
             </div>
@@ -1335,7 +1359,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudDrive v2.0 • Build 27 • Made with ❤️ by Diễn Nguyễn
+            CloudDrive v2.0 • Build 28 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>
