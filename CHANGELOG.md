@@ -4,6 +4,36 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 27)] - 2026-11-19
+- **Commit SHA**: `ca105ca`
+- **Mục tiêu**:
+  1. **Thay đổi biểu tượng ứng dụng (App Icon) CloudDrive / TeleDrive**:
+     - Thiết kế mới toàn bộ bộ icon ứng dụng đồng bộ mọi kích thước trên iOS (`AppIcon.appiconset`, `AppIcon-Dark`, `AppIcon-Tinted`, 1024x1024, iPhone/iPad retina sizes) và Web/PWA (`apple-photos-icon.svg`, `favicon.svg`).
+     - Ý tưởng biểu tượng: Nền chuyển sắc Deep Midnight Blue sang Vibrant Cobalt Blue, biểu tượng tệp tin/thư mục 3D hiệu ứng kính mờ (Frosted Glass), đám mây phát sáng viền neon cùng mũi tên đồng bộ hai chiều biểu trưng cho Telegram Cloud Drive tốc độ cao.
+  2. **Sửa dứt điểm lỗi không chuyển được tab "Thông số API" và "Đăng nhập MTProto"**:
+     - **Nguyên nhân**: `useEffect` trong `SettingsModal.tsx` lắng nghe các phụ thuộc `[isOpen, config, photos]` và liên tục đặt lại `activeTab = "backup"` mỗi khi component re-render hoặc `config` thay đổi, khiến người dùng bị văng ra khỏi tab "Thông số API" hoặc "Đăng nhập MTProto".
+     - **Giải pháp**: Tách biệt luồng khởi tạo tab bằng `wasOpenRef`, chỉ đặt tab mặc định một lần duy nhất khi vừa mở modal; người dùng tự do chuyển đổi giữa 3 tab ("Thông số API", "Đăng nhập MTProto", "Sao lưu iCloud") mà không bao giờ bị nhảy tab.
+  3. **Hỗ trợ chuyển đổi linh hoạt kênh Telegram (Channel Switcher) & Tích hợp kênh "IPA-MOD [DienNguyen]"**:
+     - Bổ sung tính năng quét tự động tất cả các kênh/nhóm của người dùng (`fetchUserChannels`) trực tiếp qua Telegram GramJS MTProto.
+     - Thêm các nút chọn nhanh kênh thường dùng: `[ 📱 IPA-MOD [DienNguyen] ]`, `[ ☁️ Cloud Drive Telegram ]`, `[ 📷 Kho ảnh đồng bộ Telegram ]`.
+     - Cho phép nhập trực tiếp tên kênh (ví dụ: `IPA-MOD [DienNguyen]`) hoặc username hoặc ID số âm (`-100...`). Thuật toán trong `telegramDriveService.ts` tự động tìm kiếm kênh theo tên và phân giải ID chính xác.
+     - Hiển thị huy hiệu kênh đang kết nối ngay trên thanh tiêu đề `DriveHeader`, cho phép chạm vào để đổi kênh bất cứ lúc nào.
+- **Chi tiết thay đổi**:
+  - `generate_icon.py`: Tạo bộ biểu tượng CloudDrive chuẩn iOS.
+  - `ios-photo-app/ios/App/App/Assets.xcassets/AppIcon.appiconset/*`: Thay thế bộ ảnh icon kích thước đầy đủ.
+  - `ios-photo-app/public/apple-photos-icon.svg`, `favicon.svg`: Cập nhật favicon và icon web.
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Bổ sung `fetchUserChannels()`, phân giải channel entity theo tên hoặc ID.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Sửa lỗi nhảy tab, thêm bộ quét kênh và nút chọn kênh nhanh `IPA-MOD [DienNguyen]`, nâng cấp Build 27.
+  - `ios-photo-app/src/components/DriveHeader.tsx`: Bổ sung nút chọn và hiển thị kênh trực tiếp trên thanh tiêu đề.
+  - `ios-photo-app/src/App.tsx`: Liên kết trạng thái kênh và làm mới dữ liệu khi đổi kênh.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 27.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 26)] - 2026-11-19
 - **Commit SHA**: `33082e1`
 - **Mục tiêu**:

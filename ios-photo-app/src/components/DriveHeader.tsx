@@ -33,6 +33,7 @@ interface DriveHeaderProps {
   onNavigateHome: () => void;
   isLoggedIn: boolean;
   onOpenSettings: () => void;
+  channelTitle?: string;
 }
 
 export const DriveHeader: React.FC<DriveHeaderProps> = ({
@@ -53,6 +54,7 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
   onNavigateHome,
   isLoggedIn,
   onOpenSettings,
+  channelTitle,
 }) => {
   const categories: { key: FileCategory | "all" | "starred"; label: string; icon?: string }[] = [
     { key: "all", label: "Tất cả" },
@@ -76,9 +78,15 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
                 Cloud Drive
               </span>
             </h1>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/15 text-blue-400 border border-blue-500/25">
-              MTProto
-            </span>
+            <button
+              onClick={onOpenSettings}
+              className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-blue-500/15 text-blue-400 border border-blue-500/25 max-w-[170px] truncate flex items-center gap-1 active:scale-95 transition-transform hover:bg-blue-500/25 cursor-pointer"
+              title="Đổi kênh lưu trữ Telegram"
+            >
+              <span className="text-xs">📢</span>
+              <span className="truncate">{channelTitle || "IPA-MOD [DienNguyen]"}</span>
+              <span className="text-[9px] opacity-70">▼</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-neutral-400 mt-0.5 font-medium">

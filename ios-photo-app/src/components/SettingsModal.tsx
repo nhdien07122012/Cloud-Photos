@@ -29,7 +29,11 @@ import {
   verifyTelegramCode,
   logoutTelegram,
 } from "../services/telegramClient";
-import { getCacheStats, clearPhotoCache } from "../services/photoStorage";
+import {
+  fetchUserChannels,
+  type TelegramChannelInfo,
+} from "../services/telegramDriveService";
+import { getCacheStats, clearPhotoCache } from "../services/fileStorage";
 import {
   getFreeableDevicePhotos,
   freeUpDeviceStorage,
@@ -61,13 +65,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRefreshPhotos,
 }) => {
   const [formData, setFormData] = useState<TelegramConfig>(config);
-  const [activeTab, setActiveTab] = useState<"api" | "login" | "backup">(
-    config.apiId && config.apiHash && !config.isLoggedIn
-      ? "login"
-      : config.isLoggedIn
-      ? "backup"
-      : "api"
-  );
+  const [activeTab, setActiveTab] = useState<"api" | "login" | "backup">("api");
+  const wasOpenRef = useRef(false);
+
+  // Danh sách Kênh Telegram đã quét được
+  const [detectedChannels, setDetectedChannels] = useState<TelegramChannelInfo[]>([]);
+  const [isScanningChannels, setIsScanningChannels] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phone, setPhone] = useState(config.phoneNumber || "");
   const [phoneCodeHash, setPhoneCodeHash] = useState("");
@@ -78,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [statusMsg, setStatusMsg] = useState("");
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  // Bộ nhớ đệm ảnh (Offline Cache)
+  // Bộ nhớ đệm (Offline Cache)
   const [cacheStats, setCacheStats] = useState<{
     count: number;
     sizeMB: string;
@@ -109,29 +113,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  // Quét danh sách Kênh Telegram của tài khoản
+  const handleScanChannels = async () => {
+    setIsScanningChannels(true);
+    setStatusMsg("Đang quét danh sách Kênh Telegram của bạn...");
+    try {
+      const list = await fetchUserChannels(formData);
+      setDetectedChannels(list);
+      if (list.length > 0) {
+        setStatusMsg(`Đã tìm thấy ${list.length} Kênh/Nhóm! Hãy chọn Kênh bên dưới để lưu trữ.`);
+      } else {
+        setStatusMsg("Không tìm thấy Kênh nào. Bạn có thể tự nhập tên Kênh vào ô bên dưới.");
+      }
+    } catch (err: any) {
+      setStatusMsg("Lỗi quét kênh: " + (err.message || "Kiểm tra kết nối"));
+    } finally {
+      setIsScanningChannels(false);
+    }
+  };
+
   const refreshCacheStats = async () => {
     const stats = await getCacheStats();
     setCacheStats(stats);
   };
 
+  // CHỈ KHỞI TẠO TAB VÀ DỮ LIỆU KHI VỪA MỞ MODAL (Không ghi đè tab khi đang bấm)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       setFormData(config);
       setPhone(config.phoneNumber || "");
       refreshCacheStats();
       checkFreeableSpace();
       setCleanupMessage(null);
       setStatusMsg("");
-      // Đặt tab mặc định: nếu đã đăng nhập thì ưu tiên tab "backup" giống insta_downloader
-      if (config.isLoggedIn) {
-        setActiveTab("backup");
-      } else if (config.apiId && config.apiHash) {
-        setActiveTab("login");
-      } else {
-        setActiveTab("api");
+      // Mặc định luôn mở tab Thông số API & Kênh để người dùng xem và đổi kênh
+      setActiveTab("api");
+      // Tự động quét danh sách kênh nếu đã đăng nhập MTProto
+      if (config.isLoggedIn && config.apiId && config.apiHash) {
+        fetchUserChannels(config).then((list) => {
+          if (list && list.length > 0) setDetectedChannels(list);
+        }).catch(() => {});
       }
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, config, photos]);
+  }, [isOpen]);
 
   const handleClearCache = async () => {
     const confirmed = window.confirm(
@@ -419,6 +446,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
     onSave(formData);
     setSavedSuccess(true);
+    if (onRefreshPhotos) onRefreshPhotos();
+
     if (!formData.isLoggedIn && formData.apiId && formData.apiHash) {
       setTimeout(() => {
         setSavedSuccess(false);
@@ -428,7 +457,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else {
       setTimeout(() => {
         setSavedSuccess(false);
-        setStatusMsg("Đã lưu cấu hình API thành công!");
+        setStatusMsg(`Đã lưu cấu hình và Kênh "${formData.channelId || "mặc định"}" thành công!`);
       }, 500);
     }
   };
@@ -629,24 +658,122 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
             </div>
 
-            <div>
-              <label className="text-xs sm:text-sm font-semibold flex items-center gap-1.5 mb-1.5 text-neutral-400">
-                <Hash className="w-4 h-4 text-blue-500" />
-                ID Kênh lưu trữ:
-              </label>
+            {/* Cấu hình Kênh Telegram Lưu Trữ */}
+            <div className="space-y-2 pt-2 border-t border-neutral-700/60">
+              <div className="flex items-center justify-between">
+                <label className="text-xs sm:text-sm font-semibold flex items-center gap-1.5 text-neutral-400">
+                  <Hash className="w-4 h-4 text-blue-500" />
+                  Kênh Telegram Lưu Trữ:
+                </label>
+                {formData.isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={handleScanChannels}
+                    disabled={isScanningChannels}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 active:opacity-60 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isScanningChannels ? "animate-spin" : ""}`} />
+                    <span>{isScanningChannels ? "Đang quét..." : "Quét Kênh của bạn"}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Gợi ý Kênh nhanh (Bao gồm kênh IPA-MOD của người dùng) */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-neutral-500 font-medium">Gợi ý nhanh:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({ ...formData, channelId: "IPA-MOD [DienNguyen]" });
+                    setStatusMsg("Đã chọn Kênh: IPA-MOD [DienNguyen]");
+                  }}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
+                    formData.channelId === "IPA-MOD [DienNguyen]"
+                      ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                      : "bg-neutral-800/90 text-blue-400 border-neutral-700 hover:border-neutral-600"
+                  }`}
+                >
+                  📱 IPA-MOD [DienNguyen]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({ ...formData, channelId: "Cloud Drive Telegram" });
+                    setStatusMsg("Đã chọn Kênh: Cloud Drive Telegram");
+                  }}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
+                    formData.channelId === "Cloud Drive Telegram"
+                      ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                      : "bg-neutral-800/90 text-purple-400 border-neutral-700 hover:border-neutral-600"
+                  }`}
+                >
+                  ☁️ Cloud Drive
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({ ...formData, channelId: "Kho ảnh đồng bộ Telegram" });
+                    setStatusMsg("Đã chọn Kênh: Kho ảnh đồng bộ Telegram");
+                  }}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold border active:scale-95 transition-all cursor-pointer ${
+                    formData.channelId === "Kho ảnh đồng bộ Telegram"
+                      ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                      : "bg-neutral-800/90 text-emerald-400 border-neutral-700 hover:border-neutral-600"
+                  }`}
+                >
+                  📷 Kho ảnh đồng bộ
+                </button>
+              </div>
+
+              {/* Danh sách Kênh đã quét được từ tài khoản */}
+              {detectedChannels.length > 0 && (
+                <div className="p-2.5 bg-neutral-800/80 border border-neutral-700 rounded-2xl max-h-44 overflow-y-auto space-y-1.5">
+                  <p className="text-[11px] text-neutral-400 font-medium px-1">
+                    Bấm vào 1 Kênh bên dưới để chuyển sang:
+                  </p>
+                  {detectedChannels.map((c) => {
+                    const isSelected =
+                      formData.channelId === c.id ||
+                      formData.channelId === c.title ||
+                      (c.username && formData.channelId === `@${c.username}`);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setFormData({ ...formData, channelId: c.title || c.id });
+                          setStatusMsg(`Đã chọn Kênh "${c.title}"`);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-neutral-900/90 text-neutral-200 hover:bg-neutral-700"
+                        }`}
+                      >
+                        <span className="truncate">{c.title}</span>
+                        <span className="text-[10px] opacity-70 font-mono ml-2 shrink-0">{c.id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <input
                 type="text"
-                placeholder="Ví dụ: -1004288667686 (để trống để tự động nhận diện)"
+                placeholder="Ví dụ: IPA-MOD [DienNguyen] hoặc ID: -1004288667686"
                 value={formData.channelId}
                 onChange={(e) =>
-                  setFormData({ ...formData, channelId: e.target.value.trim() })
+                  setFormData({ ...formData, channelId: e.target.value })
                 }
-                className={`w-full rounded-2xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full rounded-2xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isDarkMode
                     ? "bg-neutral-800/80 border border-neutral-700 text-white"
                     : "bg-white border border-neutral-300 text-black shadow-sm"
                 }`}
               />
+              <p className="text-[11px] text-neutral-500 leading-normal">
+                💡 Bạn có thể nhập trực tiếp tên Kênh (ví dụ <b>IPA-MOD [DienNguyen]</b>), ứng dụng sẽ tự động liên kết với Kênh tương ứng.
+              </p>
             </div>
 
             <div className="pt-2 flex gap-3">
@@ -659,7 +786,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
                 }`}
               >
-                Hủy
+                Đóng
               </button>
               <button
                 type="submit"
@@ -668,10 +795,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {savedSuccess ? (
                   <>
                     <Check className="w-4 h-4" />
-                    Đã lưu!
+                    Đã lưu & Chuyển Kênh!
                   </>
                 ) : (
-                  "Lưu cấu hình"
+                  "Lưu cấu hình & Kênh"
                 )}
               </button>
             </div>
@@ -695,13 +822,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <Check className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-emerald-400 text-base">
-                  Đã kết nối Telegram cá nhân
+                  Đã kết nối Telegram thành công
                 </h3>
                 <p className={`text-xs sm:text-sm mt-1 leading-relaxed ${isDarkMode ? "text-neutral-400" : "text-neutral-600"}`}>
-                  SĐT: <strong>{formData.phoneNumber || phone}</strong> • Kênh: <strong>{formData.channelId || "Kho ảnh đồng bộ"}</strong>
+                  SĐT: <strong>{formData.phoneNumber || phone}</strong>
+                </p>
+                <p className="text-xs text-blue-400 font-semibold mt-0.5">
+                  Kênh đang dùng: <strong>{formData.channelId || "Tự động nhận diện"}</strong>
                 </p>
 
                 <div className="mt-4 flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("api")}
+                    className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer shadow-md shadow-blue-500/20"
+                  >
+                    <Hash className="w-4 h-4" />
+                    <span>Đổi Kênh Lưu Trữ (IPA-MOD / Kênh khác)</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -715,7 +854,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   >
                     <RefreshCw className="w-4 h-4 text-blue-400" />
-                    Làm mới danh sách ảnh từ Telegram
+                    Đồng bộ lại danh sách tệp từ Telegram
                   </button>
 
                   <button
@@ -1178,7 +1317,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25 block">
-                Build 26
+                Build 27
               </span>
               <span className="text-[10px] text-neutral-500 block mt-0.5">iOS Native</span>
             </div>
@@ -1196,7 +1335,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudDrive v2.0 • Build 26 • Made with ❤️ by Diễn Nguyễn
+            CloudDrive v2.0 • Build 27 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

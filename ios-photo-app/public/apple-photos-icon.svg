@@ -1,14 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="115" fill="#ffffff"/>
-  <g transform="translate(256, 256)">
-    <!-- 8 Petals of Apple Photos -->
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#FF2D55" opacity="0.9"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#FF9500" opacity="0.9" transform="rotate(45)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#FFCC00" opacity="0.9" transform="rotate(90)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#4CD964" opacity="0.9" transform="rotate(135)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#5AC8FA" opacity="0.9" transform="rotate(180)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#007AFF" opacity="0.9" transform="rotate(225)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#5856D6" opacity="0.9" transform="rotate(270)"/>
-    <path d="M 0,-190 C 25,-190 40,-130 0,-70 C -40,-130 -25,-190 0,-190" fill="#AF52DE" opacity="0.9" transform="rotate(315)"/>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0c1836"/>
+      <stop offset="60%" stop-color="#024694"/>
+      <stop offset="100%" stop-color="#006ee6"/>
+    </linearGradient>
+    <linearGradient id="folderBack" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0088ee"/>
+      <stop offset="100%" stop-color="#0055bb"/>
+    </linearGradient>
+    <linearGradient id="folderFront" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#22b8ff"/>
+      <stop offset="100%" stop-color="#0088ee"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="12" flood-color="#00143c" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGrad)"/>
+
+  <!-- Glowing Center -->
+  <circle cx="256" cy="240" r="150" fill="#38bdf8" opacity="0.15" filter="blur(25px)"/>
+
+  <!-- 3D Folder Body -->
+  <g filter="url(#shadow)">
+    <!-- Back Tab & Flap -->
+    <rect x="85" y="145" width="145" height="60" rx="18" fill="url(#folderBack)"/>
+    <rect x="85" y="175" width="342" height="230" rx="24" fill="url(#folderBack)"/>
+
+    <!-- Front Flap -->
+    <rect x="80" y="215" width="352" height="195" rx="24" fill="url(#folderFront)"/>
+    <rect x="80" y="215" width="352" height="6" rx="3" fill="#ffffff" opacity="0.4"/>
+  </g>
+
+  <!-- Luminous Cloud Symbol -->
+  <g filter="url(#shadow)">
+    <circle cx="205" cy="295" r="48" fill="#ffffff"/>
+    <circle cx="307" cy="295" r="48" fill="#ffffff"/>
+    <circle cx="236" cy="255" r="58" fill="#ffffff"/>
+    <circle cx="282" cy="270" r="46" fill="#ffffff"/>
+    <rect x="180" y="278" width="152" height="52" rx="24" fill="#ffffff"/>
+
+    <!-- Central Upward Sync Arrow -->
+    <path d="M 256,260 L 225,295 L 244,295 L 244,324 L 268,324 L 268,295 L 287,295 Z" fill="#0070eb"/>
   </g>
 </svg>

@@ -135,8 +135,9 @@ export function App() {
   }, [config.isLoggedIn]);
 
   // Hàm làm mới danh sách tệp từ Kênh Telegram
-  const refreshFilesFromChannel = async (showLoadingSpinner = true) => {
-    if (!config.isLoggedIn && !config.sessionString) {
+  const refreshFilesFromChannel = async (showLoadingSpinner = true, targetConfig?: TelegramConfig) => {
+    const cfg = targetConfig || config;
+    if (!cfg.isLoggedIn && !cfg.sessionString) {
       if (showLoadingSpinner) {
         showToast("Vui lòng vào Cài đặt để kết nối tài khoản Telegram!");
       }
@@ -145,7 +146,7 @@ export function App() {
 
     if (showLoadingSpinner) setIsLoading(true);
     try {
-      const channelFiles = await fetchDriveFiles(config, 150);
+      const channelFiles = await fetchDriveFiles(cfg, 150);
       setFiles(channelFiles);
       if (showLoadingSpinner) {
         showToast(`Đã đồng bộ ${channelFiles.length} tệp từ Kênh 🚀`);
@@ -459,6 +460,7 @@ export function App() {
         onNavigateHome={() => setCurrentFolder("/")}
         isLoggedIn={!!config.isLoggedIn}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        channelTitle={config.channelId || "IPA-MOD [DienNguyen]"}
       />
 
       {/* Main File Content Body */}
@@ -556,6 +558,7 @@ export function App() {
           setConfig(newCfg);
           saveStoredConfig(newCfg);
           showToast("Đã lưu cấu hình Cloud Drive thành công!");
+          refreshFilesFromChannel(true, newCfg);
         }}
         theme={theme}
         onThemeChange={setTheme}
