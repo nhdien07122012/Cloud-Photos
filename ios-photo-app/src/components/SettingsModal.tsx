@@ -1178,7 +1178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25 block">
-                Build 25
+                Build 26
               </span>
               <span className="text-[10px] text-neutral-500 block mt-0.5">iOS Native</span>
             </div>
@@ -1196,7 +1196,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               isDarkMode ? "text-neutral-500" : "text-neutral-400"
             }`}
           >
-            CloudPhotos v1.3 • Build 25 • Made with ❤️ by Diễn Nguyễn
+            CloudDrive v2.0 • Build 26 • Made with ❤️ by Diễn Nguyễn
           </p>
         </div>
       </div>

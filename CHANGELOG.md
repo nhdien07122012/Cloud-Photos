@@ -1,6 +1,45 @@
-# 📝 Nhật Ký Thay Đổi (Changelog) - Cloud-Photos
+# 📝 Nhật Ký Thay Đổi (Changelog) - Cloud-Photos / CloudDrive
 
-Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi tiết kỹ thuật và lệnh hoàn tác (rollback) của dự án Cloud-Photos.
+Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi tiết kỹ thuật và lệnh hoàn tác (rollback) của dự án Cloud-Photos / CloudDrive.
+
+---
+
+## [v2.0 (Build 26)] - 2026-11-19
+- **Commit SHA**: `33082e1`
+- **Mục tiêu**:
+  1. **Chuyển đổi toàn diện dự án sang Telegram Cloud Drive (TeleDrive) - Quản lý tệp tin đám mây**:
+     - **Tái cấu trúc mô hình dữ liệu**:
+       + Chuyển từ mô hình `PhotoItem` (chỉ quản lý ảnh/video) sang mô hình tệp tin tổng hợp `CloudFile`: Tên tệp, đuôi mở rộng (`extension`), dung lượng thực tế (`size`), định dạng MIME (`mimeType`), phân loại danh mục (`category`: document, image, video, audio, archive, app, code, other), thư mục (`folder`) và đánh dấu sao (`isStarred`).
+     - **Giao diện chuẩn Apple Files / Google Drive**:
+       + **Thanh tiêu đề (DriveHeader)**: Tích hợp thanh tìm kiếm tức thì theo tên và đuôi tệp; bộ lọc danh mục (Tất cả, Tài liệu, Hình ảnh, Video, File nén, Ứng dụng IPA/APK, Âm thanh, Đã gắn sao); chuyển đổi chế độ xem Danh sách (List View) và Lưới (Grid View); menu sắp xếp (Mới nhất, Cũ nhất, Tên A-Z, Dung lượng lớn nhất).
+       + **Danh sách tệp tin (FileList & FileIcon)**: Thiết kế biểu tượng màu sắc phân biệt từng định dạng tệp chuẩn macOS/iOS (PDF đỏ, Word xanh biển, Excel xanh lá, ZIP cam, IPA/APK xanh cyan, Audio hồng, Video tím...).
+       + **Quản lý Thư mục (Virtual Folders)**: Hỗ trợ tự động phân loại tệp theo thư mục và tạo thư mục mới tùy chọn màu sắc với `FolderModal`.
+     - **Hệ thống Upload tệp không giới hạn dung lượng**:
+       + Cho phép người dùng chọn bất kỳ tệp tin nào từ ứng dụng "Tệp" (Files) của iPhone hoặc máy tính qua nút `+` nổi bật ở thanh điều hướng đáy.
+       + Hỗ trợ tải lên các tệp dung lượng lớn lên đến **2 GB / tệp** (hoặc 4 GB với tài khoản Telegram Premium) qua cơ chế chia nhỏ gói tin (Chunking) của GramJS MTProto với `maxBufferSize: 2GB` và `forceDocument: true`, bảo toàn 100% dữ liệu gốc không bị nén hay suy giảm chất lượng.
+     - **Hệ thống Download & Xem trước (FileViewer)**:
+       + Tích hợp trình xem và phát đa phương tiện: Xem ảnh zoom mượt mà, phát video trực tuyến, phát nhạc audio, xem thông tin tài liệu.
+       + Mở trực tiếp qua menu chia sẻ iOS Share Sheet: Dễ dàng chọn "Lưu vào Tệp" (Save to Files), AirDrop hoặc mở bằng các ứng dụng chuyên dụng (VLC, Word, Excel, Acrobat...).
+     - **Quản lý tiến trình truyền tệp (TransfersModal)**:
+       + Theo dõi thời gian thực phần trăm tiến trình tải lên / tải xuống, tốc độ truyền (MB/s) và trạng thái tệp.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/types/index.ts`: Bổ sung `CloudFile`, `FolderItem`, `TransferTask`, `FileCategory`.
+  - `ios-photo-app/src/services/fileStorage.ts`: Khởi tạo IndexedDB `TeleDriveCacheDB` lưu trữ bộ nhớ đệm tệp, thư mục và trạng thái gắn sao.
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Triển khai dịch vụ MTProto đọc tin nhắn document, tải lên chunked và tải về file gốc.
+  - `ios-photo-app/src/components/FileIcon.tsx`: Biểu tượng tệp tin phân loại trực quan.
+  - `ios-photo-app/src/components/DriveHeader.tsx`: Thanh công cụ tìm kiếm, lọc và sắp xếp.
+  - `ios-photo-app/src/components/FileList.tsx`: Trình hiển thị danh sách và lưới tệp tin.
+  - `ios-photo-app/src/components/FileViewer.tsx`: Trình xem trước, phát media và tải tệp tin.
+  - `ios-photo-app/src/components/FolderModal.tsx`: Hộp thoại tạo thư mục.
+  - `ios-photo-app/src/components/TransfersModal.tsx`: Hộp thoại theo dõi tiến trình truyền tải.
+  - `ios-photo-app/src/components/DriveTabBar.tsx`: Thanh điều hướng đáy và nút chọn tệp tải lên.
+  - `ios-photo-app/src/App.tsx`: Tái cấu trúc ứng dụng chính thành Telegram Cloud Drive.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Cập nhật hiển thị Build 26.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Cập nhật `CURRENT_PROJECT_VERSION` thành `26`.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
 
 ---
 
