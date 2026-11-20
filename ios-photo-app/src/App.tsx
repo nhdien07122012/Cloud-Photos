@@ -39,7 +39,6 @@ import SettingsModal from "./components/SettingsModal";
 import {
   Trash2,
   RefreshCw,
-  DownloadCloud,
 } from "lucide-react";
 
 export function App() {
@@ -512,6 +511,7 @@ export function App() {
         isLoggedIn={!!config.isLoggedIn}
         onOpenSettings={() => setIsSettingsOpen(true)}
         channelTitle={config.channelTitle || config.channelId || "IPA-MOD [DienNguyen]"}
+        activeDownloadProgress={activeDownloadTask?.progress}
       />
 
       {/* Main File Content Body */}
@@ -542,32 +542,33 @@ export function App() {
             }}
             downloadedFileIds={downloadedFileIds}
             activeDownloads={activeDownloads}
+            onOpenTransfers={() => setIsTransfersModalOpen(true)}
           />
         )}
       </main>
 
-      {/* Floating Action Bar khi đang ở chế độ chọn nhiều tệp */}
+      {/* Toolbar khi đang ở chế độ chọn nhiều tệp (Docked ở đáy chuẩn iOS) */}
       {isSelectionMode && selectedFileIds.size > 0 && (
-        <div className="fixed bottom-20 inset-x-4 z-40 max-w-sm mx-auto bg-neutral-900/95 border border-neutral-700/80 backdrop-blur-xl p-3 rounded-2xl shadow-2xl flex items-center justify-between animate-in slide-in-from-bottom duration-200">
-          <span className="text-xs font-bold text-white pl-2">
+        <div className="fixed bottom-0 inset-x-0 z-50 bg-neutral-900/95 border-t border-neutral-800 backdrop-blur-xl px-5 py-3 pb-[calc(0.75rem+var(--sab))] flex items-center justify-between shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <span className="text-sm font-bold text-white">
             Đã chọn {selectedFileIds.size} tệp
           </span>
           <div className="flex items-center gap-2">
             <button
               onClick={handleDeleteSelected}
-              className="px-3.5 py-2 bg-red-600/90 hover:bg-red-600 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md"
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Xóa</span>
+              <span>Xóa ({selectedFileIds.size})</span>
             </button>
             <button
               onClick={() => {
                 setSelectedFileIds(new Set());
                 setIsSelectionMode(false);
               }}
-              className="px-3 py-2 bg-neutral-800 text-neutral-300 text-xs font-semibold rounded-xl"
+              className="px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 active:scale-95 text-neutral-300 text-xs font-semibold rounded-xl cursor-pointer"
             >
-              Đóng
+              Hủy
             </button>
           </div>
         </div>
@@ -621,41 +622,6 @@ export function App() {
         isDarkMode={theme === "dark"}
         onRefreshPhotos={(customCfg) => refreshFilesFromChannel(true, customCfg || config)}
       />
-
-      {/* Floating Download Progress Banner (Hiện tiến trình thời gian thực khi đang tải) */}
-      {activeDownloadTask && (
-        <div
-          onClick={() => setIsTransfersModalOpen(true)}
-          className="fixed bottom-20 inset-x-4 max-w-md mx-auto z-40 bg-neutral-900/95 border border-blue-500/40 backdrop-blur-xl p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 cursor-pointer active:scale-98 transition-all animate-in slide-in-from-bottom duration-200"
-        >
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-              <DownloadCloud className="w-4 h-4 animate-bounce" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between text-xs font-semibold mb-1">
-                <span className="truncate text-white max-w-[180px]">{activeDownloadTask.name}</span>
-                <span className="text-blue-400 font-mono font-bold ml-2 shrink-0">{activeDownloadTask.progress}%</span>
-              </div>
-              <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 rounded-full transition-all duration-200"
-                  style={{ width: `${activeDownloadTask.progress}%` }}
-                />
-              </div>
-              {activeDownloadTask.speed && (
-                <div className="text-[10px] text-neutral-400 mt-1 flex items-center justify-between">
-                  <span>Tốc độ: {activeDownloadTask.speed}</span>
-                  <span className="text-blue-400 font-medium">Lưu tạm vào Cloud app</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <span className="text-[10px] text-blue-400 font-bold shrink-0 bg-blue-500/10 px-2.5 py-1 rounded-lg">
-            Chi tiết ➔
-          </span>
-        </div>
-      )}
 
       {/* Bottom Navigation Tab Bar */}
       <DriveTabBar

@@ -4,6 +4,33 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 30)] - 2026-11-20
+- **Commit SHA**: *(Tự động gắn sau khi commit)*
+- **Mục tiêu**:
+  1. **Khắc phục triệt để lỗi giao diện chồng lấn (UI overlap) tại thanh điều hướng đáy**:
+     - **Nguyên nhân**: Bản dựng trước đó (Build 29) tạo thêm khung nổi tiến trình (`Floating Download Progress Banner`) đặt ở `bottom-20` (80px), nằm trùng và bị che khuất bởi thanh công cụ đáy (`DriveTabBar` cao ~98px gồm Safe Area Inset) cùng nút tròn dấu cộng `(+)` nhô cao 24px (`-mt-6`). Do đó, nút dấu cộng và thanh tab bar đè lên nửa dưới của banner, che khuất chữ "Lưu tạm vào Cloud app" và nút xem chi tiết.
+     - **Giải pháp xử lý toàn diện**:
+       + **Loại bỏ banner nổi bị lỗi chồng lấn ở đáy**: Xóa bỏ hoàn toàn phần tử banner đè lên tab bar.
+       + **Tích hợp thanh tiến trình toàn cục thanh mảnh (Global Slim Header Progress Bar)**: Đặt trực tiếp tại mép dưới của thanh tiêu đề `DriveHeader`, với vệt sáng gradient gradient xanh ngọc/xanh dương chuyển động theo tiến trình tải (0 - 100%), không gây vướng víu hay đè lên bất kỳ thành phần nào trên màn hình.
+       + **Nâng cấp hiển thị tiến trình trực tiếp trên thẻ tệp (FileList)**:
+         * Chuyển cách hiển thị tên tệp từ `truncate` cứng sang `line-clamp-2 break-all leading-snug`, khắc phục triệt để việc tên tệp dài bị cắt cụt (ví dụ `Swiftgram_13.2_全...` nay hiển thị đầy đủ cả đuôi `.ipa`).
+         * Khi đang tải tệp: Dòng phụ chú tự động chuyển sang hiển thị chữ xanh `Đang lưu tạm: 4% (2.5 MB/s)` kèm thanh tiến trình mini ngay trong card tệp. Nút tiến trình xoay `🔄 4%` trở thành nút bấm mở nhanh bảng chi tiết Tiến trình truyền tệp (`TransfersModal`).
+         * Khi tải xong (đã lưu tạm): Hiển thị huy hiệu `Offline • 78.9 MB • 20 thg 11` với biểu tượng tích xanh `CheckCircle2`.
+       + **Tối ưu thanh công cụ chọn nhiều tệp (Selection Mode Toolbar)**:
+         * Chuyển đổi từ khung nổi `bottom-20` sang thanh bottom bar gắn liền sát đáy chuẩn Apple (`fixed bottom-0 inset-x-0 z-50 pb-[calc(0.75rem+var(--sab))]`), tự động đè lên tab bar an toàn khi chọn file và trả lại thanh tab bar khi hủy chọn.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/components/DriveHeader.tsx`: Tiếp nhận `activeDownloadProgress` và hiển thị thanh tiến trình 2px tinh tế ở đáy header.
+  - `ios-photo-app/src/components/FileList.tsx`: Cho phép tiêu đề tệp hiển thị 2 dòng không cắt đuôi, bổ sung thông số tốc độ/tiến trình và thanh mini progress trong thẻ tệp, hỗ trợ bấm vào % để mở danh sách tiến trình.
+  - `ios-photo-app/src/App.tsx`: Xóa bỏ floating banner gây lỗi đè giao diện; kết nối tiến trình tải lên header và danh sách tệp; hoàn thiện thanh chọn tệp theo phong cách Apple Files.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị Build 30.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 30.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 29)] - 2026-11-20
 - **Commit SHA**: `72beb5a`
 - **Mục tiêu**:

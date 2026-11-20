@@ -34,6 +34,7 @@ interface FileListProps {
   onOpenUpload: () => void;
   downloadedFileIds?: Set<number>;
   activeDownloads?: Map<number, { progress: number; speed?: string }>;
+  onOpenTransfers?: () => void;
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -53,6 +54,7 @@ export const FileList: React.FC<FileListProps> = ({
   onOpenUpload,
   downloadedFileIds = new Set(),
   activeDownloads = new Map(),
+  onOpenTransfers,
 }) => {
   // Hiển thị thư mục nếu đang ở thư mục gốc "/"
   const showFolders = currentFolder === "/";
@@ -168,27 +170,53 @@ export const FileList: React.FC<FileListProps> = ({
 
                   {/* Thông tin tên, dung lượng, ngày */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-semibold text-white truncate">
+                    <p className="text-xs sm:text-sm font-semibold text-white line-clamp-2 break-all leading-snug">
                       {file.name}
                     </p>
-                    <div className="flex items-center gap-2 text-[11px] text-neutral-400 mt-0.5 font-medium">
-                      <span className="text-neutral-300 font-semibold">{file.sizeFormatted}</span>
-                      <span>•</span>
-                      <span>
-                        {file.date.toLocaleDateString("vi-VN", {
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </span>
-                      {file.folder && file.folder !== "/" && (
-                        <>
-                          <span>•</span>
-                          <span className="truncate max-w-[90px] text-blue-400/90 font-medium">
-                            {file.folder}
-                          </span>
-                        </>
-                      )}
-                    </div>
+                    {activeDownloads?.has(file.messageId) ? (
+                      <div className="mt-1 space-y-1">
+                        <div className="flex items-center gap-1.5 text-[11px] text-blue-400 font-semibold">
+                          <span>Đang lưu tạm: {activeDownloads.get(file.messageId)?.progress || 0}%</span>
+                          {activeDownloads.get(file.messageId)?.speed && (
+                            <span className="text-neutral-400 font-normal">({activeDownloads.get(file.messageId)?.speed})</span>
+                          )}
+                        </div>
+                        <div className="w-full bg-neutral-800 rounded-full h-1 overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1 rounded-full transition-all duration-200"
+                            style={{ width: `${activeDownloads.get(file.messageId)?.progress || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-[11px] text-neutral-400 mt-0.5 font-medium">
+                        {downloadedFileIds?.has(file.messageId) && (
+                          <>
+                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              <span>Offline</span>
+                            </span>
+                            <span>•</span>
+                          </>
+                        )}
+                        <span className="text-neutral-300 font-semibold">{file.sizeFormatted}</span>
+                        <span>•</span>
+                        <span>
+                          {file.date.toLocaleDateString("vi-VN", {
+                            day: "numeric",
+                            month: "short",
+                          })}
+                        </span>
+                        {file.folder && file.folder !== "/" && (
+                          <>
+                            <span>•</span>
+                            <span className="truncate max-w-[90px] text-blue-400/90 font-medium">
+                              {file.folder}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Nút tác vụ nhanh */}
@@ -207,13 +235,14 @@ export const FileList: React.FC<FileListProps> = ({
 
                       {/* Nút Tải vào Cloud app / Tiến trình thời gian thực / Đã lưu tạm */}
                       {activeDownloads?.has(file.messageId) ? (
-                        <div
-                          className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-bold shrink-0 animate-pulse"
-                          title={`Đang tải vào Cloud app: ${activeDownloads.get(file.messageId)?.progress || 0}%`}
+                        <button
+                          onClick={() => onOpenTransfers?.()}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-bold shrink-0 animate-pulse hover:bg-blue-500/25 active:scale-95 transition-all cursor-pointer"
+                          title={`Đang tải: ${activeDownloads.get(file.messageId)?.progress || 0}%. Chạm để xem danh sách tiến trình.`}
                         >
                           <RefreshCw className="w-3 h-3 animate-spin" />
                           <span>{activeDownloads.get(file.messageId)?.progress || 0}%</span>
-                        </div>
+                        </button>
                       ) : downloadedFileIds?.has(file.messageId) ? (
                         <span
                           className="p-1.5 text-emerald-400 shrink-0"

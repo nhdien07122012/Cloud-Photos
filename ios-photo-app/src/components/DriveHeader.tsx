@@ -34,6 +34,7 @@ interface DriveHeaderProps {
   isLoggedIn: boolean;
   onOpenSettings: () => void;
   channelTitle?: string;
+  activeDownloadProgress?: number;
 }
 
 export const DriveHeader: React.FC<DriveHeaderProps> = ({
@@ -55,6 +56,7 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
   isLoggedIn,
   onOpenSettings,
   channelTitle,
+  activeDownloadProgress,
 }) => {
   const categories: { key: FileCategory | "all" | "starred"; label: string; icon?: string }[] = [
     { key: "all", label: "Tất cả" },
@@ -218,6 +220,16 @@ export const DriveHeader: React.FC<DriveHeaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Real-time Global Progress Bar khi có tệp đang tải trong ứng dụng */}
+      {activeDownloadProgress !== undefined && activeDownloadProgress >= 0 && (
+        <div className="absolute bottom-0 inset-x-0 h-0.5 bg-neutral-800/80 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 transition-all duration-200"
+            style={{ width: `${Math.min(100, Math.max(0, activeDownloadProgress))}%` }}
+          />
+        </div>
+      )}
     </header>
   );
 };
