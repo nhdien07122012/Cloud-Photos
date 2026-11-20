@@ -8,11 +8,13 @@ import { FileIcon } from "./FileIcon";
 import {
   Folder,
   Star,
-  Download,
   Trash2,
   Check,
   FolderPlus,
   HardDrive,
+  DownloadCloud,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 
 interface FileListProps {
@@ -30,6 +32,8 @@ interface FileListProps {
   onDownloadFile: (file: CloudFile) => void;
   onDeleteFile: (file: CloudFile) => void;
   onOpenUpload: () => void;
+  downloadedFileIds?: Set<number>;
+  activeDownloads?: Map<number, { progress: number; speed?: string }>;
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -47,6 +51,8 @@ export const FileList: React.FC<FileListProps> = ({
   onDownloadFile,
   onDeleteFile,
   onOpenUpload,
+  downloadedFileIds = new Set(),
+  activeDownloads = new Map(),
 }) => {
   // Hiển thị thư mục nếu đang ở thư mục gốc "/"
   const showFolders = currentFolder === "/";
@@ -199,14 +205,31 @@ export const FileList: React.FC<FileListProps> = ({
                         <Star className={`w-4 h-4 ${file.isStarred ? "fill-amber-400" : ""}`} />
                       </button>
 
-                      {/* Tải về máy */}
-                      <button
-                        onClick={() => onDownloadFile(file)}
-                        className="p-2 text-neutral-400 hover:text-blue-400 active:scale-95 transition-colors"
-                        title="Tải về máy"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
+                      {/* Nút Tải vào Cloud app / Tiến trình thời gian thực / Đã lưu tạm */}
+                      {activeDownloads?.has(file.messageId) ? (
+                        <div
+                          className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-bold shrink-0 animate-pulse"
+                          title={`Đang tải vào Cloud app: ${activeDownloads.get(file.messageId)?.progress || 0}%`}
+                        >
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <span>{activeDownloads.get(file.messageId)?.progress || 0}%</span>
+                        </div>
+                      ) : downloadedFileIds?.has(file.messageId) ? (
+                        <span
+                          className="p-1.5 text-emerald-400 shrink-0"
+                          title="Đã lưu tạm trong Cloud app (mở tức thì)"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => onDownloadFile(file)}
+                          className="p-2 text-neutral-400 hover:text-blue-400 active:scale-95 transition-colors shrink-0 cursor-pointer"
+                          title="Tải vào Cloud app (Lưu tạm)"
+                        >
+                          <DownloadCloud className="w-4 h-4" />
+                        </button>
+                      )}
 
                       {/* Xóa tệp */}
                       <button
@@ -244,7 +267,7 @@ export const FileList: React.FC<FileListProps> = ({
                   }`}
                 >
                   {/* Checkbox khi chọn nhiều */}
-                  {isSelectionMode && (
+                  {isSelectionMode ? (
                     <div
                       className={`absolute top-2.5 left-2.5 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
                         isSelected
@@ -254,7 +277,14 @@ export const FileList: React.FC<FileListProps> = ({
                     >
                       {isSelected && <Check className="w-3.5 h-3.5" />}
                     </div>
-                  )}
+                  ) : downloadedFileIds?.has(file.messageId) ? (
+                    <div
+                      className="absolute top-2.5 left-2.5 z-10 p-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      title="Đã lưu tạm trong Cloud app"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    </div>
+                  ) : null}
 
                   {/* Nút Sao */}
                   <button
@@ -270,8 +300,24 @@ export const FileList: React.FC<FileListProps> = ({
                   </button>
 
                   {/* Khung Icon chính */}
-                  <div className="w-full flex items-center justify-center py-4">
+                  <div className="w-full flex items-center justify-center py-4 relative">
                     <FileIcon file={file} size="lg" />
+
+                    {/* Tiến trình tải trong Grid View */}
+                    {activeDownloads?.has(file.messageId) && (
+                      <div className="absolute inset-x-1 bottom-0 bg-neutral-950/90 border border-blue-500/40 rounded-lg p-1 flex items-center justify-between text-[9px] font-bold text-blue-400">
+                        <span className="flex items-center gap-1">
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          <span>{activeDownloads.get(file.messageId)?.progress || 0}%</span>
+                        </span>
+                        <div className="w-10 bg-neutral-800 rounded-full h-1 overflow-hidden">
+                          <div
+                            className="bg-blue-500 h-1 rounded-full transition-all duration-200"
+                            style={{ width: `${activeDownloads.get(file.messageId)?.progress || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Tên và thông số file */}

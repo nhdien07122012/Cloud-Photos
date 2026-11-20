@@ -527,7 +527,7 @@ export async function fetchDriveFiles(
 export async function downloadTelegramFile(
   config: TelegramConfig,
   messageId: number,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number, speed?: string) => void
 ): Promise<{ blob: Blob; fileName: string; mimeType: string }> {
   // 1. Kiểm tra cache đã tải trước đó
   const cachedData = await getCachedFileData(messageId);
@@ -537,7 +537,7 @@ export async function downloadTelegramFile(
   const mimeType = fileMeta?.mimeType || "application/octet-stream";
 
   if (cachedData && cachedData.byteLength > 0) {
-    if (onProgress) onProgress(100);
+    if (onProgress) onProgress(100, "100%");
     return {
       blob: new Blob([cachedData], { type: mimeType }),
       fileName,
@@ -556,11 +556,28 @@ export async function downloadTelegramFile(
   }
 
   const targetMedia = messages[0].media;
+  let startTime = Date.now();
+  let lastBytes = 0;
+  let lastTime = startTime;
+
   const rawBuffer: any = await client.downloadMedia(targetMedia, {
     progressCallback: (downloaded: any, total: any) => {
+      const now = Date.now();
+      const currentBytes = Number(downloaded);
+      const totalBytes = Number(total);
+      const percent = totalBytes > 0 ? Math.round((currentBytes / totalBytes) * 100) : 0;
+
+      const elapsed = (now - lastTime) / 1000;
+      let speedStr = "Đang tải...";
+      if (elapsed >= 0.5) {
+        const speedBps = (currentBytes - lastBytes) / (elapsed || 1);
+        speedStr = `${formatBytes(speedBps)}/s`;
+        lastBytes = currentBytes;
+        lastTime = now;
+      }
+
       if (onProgress && total) {
-        const percent = Math.round((Number(downloaded) / Number(total)) * 100);
-        onProgress(Math.min(percent, 99));
+        onProgress(Math.min(percent, 99), speedStr);
       }
     },
   });
@@ -571,7 +588,7 @@ export async function downloadTelegramFile(
 
   // Lưu vào IndexedDB để lần sau mở tức thì
   await saveCachedFileData(messageId, rawBuffer, mimeType);
-  if (onProgress) onProgress(100);
+  if (onProgress) onProgress(100, "Xong");
 
   return {
     blob: new Blob([rawBuffer], { type: mimeType }),

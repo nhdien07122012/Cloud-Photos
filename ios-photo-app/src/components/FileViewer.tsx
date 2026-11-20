@@ -6,10 +6,10 @@ import React, { useState, useEffect } from "react";
 import type { CloudFile, TelegramConfig } from "../types";
 import { FileIcon } from "./FileIcon";
 import { downloadTelegramFile } from "../services/telegramDriveService";
+import { getCachedFileData } from "../services/fileStorage";
 import {
   ChevronLeft,
   Share2,
-  Download,
   Trash2,
   Star,
   RefreshCw,
@@ -19,6 +19,8 @@ import {
   ZoomIn,
   ZoomOut,
   Play,
+  DownloadCloud,
+  CheckCircle2,
 } from "lucide-react";
 
 interface FileViewerProps {
@@ -28,6 +30,8 @@ interface FileViewerProps {
   onToggleStar: (messageId: number) => void;
   onDeleteFile: (file: CloudFile) => void;
   showToast: (msg: string) => void;
+  isCached?: boolean;
+  onDownloadToApp?: (file: CloudFile) => void;
 }
 
 export const FileViewer: React.FC<FileViewerProps> = ({
@@ -37,61 +41,106 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onToggleStar,
   onDeleteFile,
   showToast,
+  isCached = false,
+  onDownloadToApp,
 }) => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
   const [downloadedUrl, setDownloadedUrl] = useState<string | null>(null);
+  const [isLocallyCached, setIsLocallyCached] = useState<boolean>(isCached);
   const [isDownloading, setIsDownloading] = useState(false);
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
     setScale(1);
-    setDownloadedUrl(null);
     setDownloadProgress(null);
+    setDownloadSpeed(null);
     setIsDownloading(false);
-  }, [file?.messageId]);
+
+    if (file?.messageId) {
+      getCachedFileData(file.messageId).then((data) => {
+        if (data && data.byteLength > 0) {
+          const url = URL.createObjectURL(new Blob([data], { type: file.mimeType }));
+          setDownloadedUrl(url);
+          setIsLocallyCached(true);
+        } else {
+          setDownloadedUrl(null);
+          setIsLocallyCached(isCached);
+        }
+      });
+    }
+  }, [file?.messageId, isCached]);
 
   if (!file) return null;
 
-  // Xử lý tải và mở tệp qua iOS Share Sheet (Lưu vào Tệp / Mở bằng ứng dụng khác)
-  const handleDownloadAndShare = async () => {
+  // 1. Tải file từ Telegram vào bộ nhớ đệm ứng dụng Cloud (LƯU TẠM - Không ghi vào tệp thiết bị)
+  const handleDownloadToApp = async () => {
     if (isDownloading) return;
+
+    if (onDownloadToApp) {
+      onDownloadToApp(file);
+    }
+
     setIsDownloading(true);
     setDownloadProgress(0);
-    showToast(`Đang tải ${file.name}...`);
+    setDownloadSpeed("Đang kết nối...");
+    showToast(`Đang tải ${file.name} vào Cloud app...`);
 
     try {
-      const res = await downloadTelegramFile(config, file.messageId, (p) => {
+      const res = await downloadTelegramFile(config, file.messageId, (p, speed) => {
         setDownloadProgress(p);
+        if (speed) setDownloadSpeed(speed);
       });
 
-      const fileObj = new File([res.blob], file.name, { type: res.mimeType });
       const localUrl = URL.createObjectURL(res.blob);
       setDownloadedUrl(localUrl);
+      setIsLocallyCached(true);
+      showToast(`Đã lưu tạm "${file.name}" vào Cloud app thành công! ✅`);
+    } catch (err: any) {
+      console.error("Lỗi tải tệp vào Cloud app:", err);
+      showToast("Lỗi khi tải tệp: " + (err.message || "Thử lại sau"));
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(null);
+      setDownloadSpeed(null);
+    }
+  };
 
-      // Cách 1: Chia sẻ trực tiếp qua Web Share API File (Menu Lưu vào Tệp của iOS)
+  // 2. Chia sẻ / Xuất ra Tệp của thiết bị (Chỉ kích hoạt khi người dùng chủ động bấm Chia sẻ)
+  const handleExportToDevice = async () => {
+    try {
+      showToast(`Đang chuẩn bị chia sẻ ${file.name}...`);
+      let dataBlob: Blob | null = null;
+      if (downloadedUrl) {
+        const res = await fetch(downloadedUrl);
+        dataBlob = await res.blob();
+      } else {
+        const res = await downloadTelegramFile(config, file.messageId);
+        dataBlob = res.blob;
+      }
+
+      if (!dataBlob) return;
+      const fileObj = new File([dataBlob], file.name, { type: file.mimeType });
+
       if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
         await navigator.share({
           files: [fileObj],
           title: file.name,
         });
-        showToast("👉 Chọn 'Lưu vào Tệp' (Files) để lưu trên iPhone!");
+        showToast("Đã mở menu chia sẻ!");
         return;
       }
 
-      // Cách 2: Tải trình duyệt dự phòng
+      // Trình duyệt dự phòng
       const a = document.createElement("a");
-      a.href = localUrl;
+      a.href = URL.createObjectURL(dataBlob);
       a.download = file.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      showToast("Đã tải tệp về máy thành công!");
+      showToast("Đã lưu tệp ra máy!");
     } catch (err: any) {
-      console.error("Lỗi tải tệp:", err);
-      showToast("Lỗi khi tải tệp: " + (err.message || "Thử lại sau"));
-    } finally {
-      setIsDownloading(false);
-      setDownloadProgress(null);
+      console.error("Lỗi chia sẻ:", err);
     }
   };
 
@@ -116,10 +165,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           {file.name}
         </p>
 
+        {/* Nút Chia sẻ / Xuất tệp ra máy */}
         <button
-          onClick={handleDownloadAndShare}
+          onClick={handleExportToDevice}
           className="w-8 h-8 rounded-full bg-neutral-800/80 flex items-center justify-center text-blue-400 active:opacity-60"
-          title="Chia sẻ tệp"
+          title="Chia sẻ / Xuất ra Tệp thiết bị"
         >
           <Share2 className="w-4 h-4" />
         </button>
@@ -168,17 +218,26 @@ export const FileViewer: React.FC<FileViewerProps> = ({
               <audio src={downloadedUrl} controls className="w-full" autoPlay />
             ) : (
               <button
-                onClick={handleDownloadAndShare}
+                onClick={handleDownloadToApp}
                 disabled={isDownloading}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 active:scale-98 transition-all"
               >
-                {isDownloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
-                <span>{isDownloading ? `Đang tải (${downloadProgress || 0}%)...` : "Phát âm thanh"}</span>
+                {isDownloading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang tải vào Cloud app ({downloadProgress || 0}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>Tải vào Cloud app & Phát âm thanh</span>
+                  </>
+                )}
               </button>
             )}
           </div>
         ) : (
-          /* Trường hợp 4: Tài liệu, File nén, Cài đặt, Code, File khác */
+          /* Trường hợp 4: Tài liệu, File nén, Cài đặt IPA/APK, Code, File khác */
           <div className="w-full max-w-sm bg-neutral-900/90 border border-neutral-800/90 backdrop-blur-xl rounded-3xl p-6 text-center space-y-5 shadow-2xl">
             <div className="flex justify-center">
               <FileIcon file={file} size="xl" />
@@ -222,30 +281,73 @@ export const FileViewer: React.FC<FileViewerProps> = ({
               <div className="flex items-center justify-between text-neutral-400 pt-1 border-t border-neutral-800/60">
                 <span className="flex items-center gap-1.5">
                   <HardDrive className="w-3.5 h-3.5" />
-                  <span>Mã tin nhắn Kênh</span>
+                  <span>Trạng thái</span>
                 </span>
-                <span className="font-mono text-neutral-300">#{file.messageId}</span>
+                <span className={`font-semibold ${isLocallyCached ? "text-emerald-400" : "text-neutral-400"}`}>
+                  {isLocallyCached ? "Đã lưu tạm trong Cloud app" : "Lưu trữ trên Telegram"}
+                </span>
               </div>
             </div>
 
-            {/* Nút Tải về & Mở trong Tệp (Files) */}
-            <button
-              onClick={handleDownloadAndShare}
-              disabled={isDownloading}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all disabled:opacity-60"
-            >
-              {isDownloading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Đang tải xuống ({downloadProgress || 0}%)...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>Lưu vào Tệp / Mở ứng dụng</span>
-                </>
-              )}
-            </button>
+            {/* Khối Tiến trình hoặc Nút Tải vào Cloud app */}
+            {isLocallyCached ? (
+              <div className="space-y-2.5 w-full">
+                <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-left">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-emerald-400">Đã lưu trong Cloud app</p>
+                      <p className="text-[10px] text-neutral-400">Sẵn sàng mở tức thì không tốn mạng</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/15 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/25">
+                    Offline
+                  </span>
+                </div>
+
+                {/* Nút tùy chọn nếu muốn xuất ra Tệp thiết bị */}
+                <button
+                  onClick={handleExportToDevice}
+                  className="w-full py-2.5 px-4 bg-neutral-800/90 hover:bg-neutral-700 active:scale-98 text-neutral-300 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-neutral-700/60"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Chia sẻ / Lưu vào Tệp thiết bị</span>
+                </button>
+              </div>
+            ) : isDownloading ? (
+              /* Tiến trình tải xuống thời gian thực */
+              <div className="w-full p-4 bg-neutral-800/80 border border-blue-500/30 rounded-2xl space-y-2 text-left">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="flex items-center gap-1.5 text-blue-400">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang tải vào Cloud app...</span>
+                  </span>
+                  <span className="font-mono text-blue-400 font-bold">{downloadProgress || 0}%</span>
+                </div>
+
+                {/* Thanh tiến trình gradient */}
+                <div className="w-full bg-neutral-700/60 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${downloadProgress || 0}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                  <span>Tốc độ: {downloadSpeed || "Đang đo..."}</span>
+                  <span className="text-neutral-300 font-medium">{file.sizeFormatted}</span>
+                </div>
+              </div>
+            ) : (
+              /* Nút Tải vào Cloud app */
+              <button
+                onClick={handleDownloadToApp}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
+              >
+                <DownloadCloud className="w-4 h-4" />
+                <span>Tải vào Cloud app (Lưu tạm)</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -274,14 +376,23 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           </button>
         )}
 
-        {/* Nút Tải về */}
+        {/* Nút Tải vào Cloud app */}
         <button
-          onClick={handleDownloadAndShare}
+          onClick={handleDownloadToApp}
           disabled={isDownloading}
-          className="p-2 text-neutral-300 active:opacity-60"
-          title="Tải tệp về máy"
+          className="p-2 text-neutral-300 active:opacity-60 transition-transform active:scale-110"
+          title={isLocallyCached ? "Đã lưu tạm trong Cloud app" : "Tải vào Cloud app"}
         >
-          {isDownloading ? <RefreshCw className="w-6 h-6 animate-spin text-blue-400" /> : <Download className="w-6 h-6" />}
+          {isDownloading ? (
+            <div className="flex items-center gap-1 text-blue-400 text-xs font-bold font-mono">
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              <span>{downloadProgress || 0}%</span>
+            </div>
+          ) : isLocallyCached ? (
+            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          ) : (
+            <DownloadCloud className="w-6 h-6" />
+          )}
         </button>
 
         {/* Nút Xóa tệp */}

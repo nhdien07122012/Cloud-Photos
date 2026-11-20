@@ -27,6 +27,7 @@ import {
   saveCustomFolder,
   toggleStarFile,
   formatBytes,
+  getDownloadedMessageIds,
 } from "./services/fileStorage";
 import { DriveHeader, type SortOption } from "./components/DriveHeader";
 import { FileList } from "./components/FileList";
@@ -38,6 +39,7 @@ import SettingsModal from "./components/SettingsModal";
 import {
   Trash2,
   RefreshCw,
+  DownloadCloud,
 } from "lucide-react";
 
 export function App() {
@@ -64,6 +66,11 @@ export function App() {
 
   // Trình xem / tải tệp chi tiết
   const [selectedFileForViewer, setSelectedFileForViewer] = useState<CloudFile | null>(null);
+
+  // Danh sách các tệp đã tải nội dung về Cache ứng dụng (Offline ready)
+  const [downloadedFileIds, setDownloadedFileIds] = useState<Set<number>>(new Set());
+  // Trạng thái các tệp đang tải xuống (messageId -> { progress, speed })
+  const [activeDownloads, setActiveDownloads] = useState<Map<number, { progress: number; speed?: string }>>(new Map());
 
   // Tiến trình truyền tệp (Upload / Download)
   const [transferTasks, setTransferTasks] = useState<TransferTask[]>([]);
@@ -106,9 +113,10 @@ export function App() {
 
     async function loadInitialData() {
       try {
-        const [cachedFiles, savedFolders] = await Promise.all([
+        const [cachedFiles, savedFolders, cachedBlobsSet] = await Promise.all([
           getCachedFiles(),
           getCustomFolders(),
+          getDownloadedMessageIds(),
         ]);
         if (active) {
           if (cachedFiles.length > 0) {
@@ -117,6 +125,7 @@ export function App() {
             setFiles(SAMPLE_FILES);
           }
           setCustomFolders(savedFolders);
+          setDownloadedFileIds(cachedBlobsSet);
         }
       } catch (err) {
         console.warn("Lỗi đọc cache khởi động:", err);
@@ -350,32 +359,69 @@ export function App() {
     }
   };
 
-  // Tải tệp về máy
-  const handleDownloadFile = async (file: CloudFile) => {
-    showToast(`Đang chuẩn bị tải ${file.name}...`);
+  // Tải tệp từ Telegram vào bộ nhớ tạm ứng dụng Cloud (LƯU TẠM - Không ghi vào tệp của thiết bị)
+  const handleDownloadFileToApp = async (file: CloudFile) => {
+    if (downloadedFileIds.has(file.messageId)) {
+      showToast(`Tệp "${file.name}" đã được lưu sẵn trong Cloud app (xem offline) 📁`);
+      return;
+    }
+
+    const taskId = `dl-${file.messageId}-${Date.now()}`;
+    const newTask: TransferTask = {
+      id: taskId,
+      name: file.name,
+      size: file.size,
+      sizeFormatted: file.sizeFormatted,
+      type: "download",
+      status: "running",
+      progress: 0,
+      speed: "Đang kết nối...",
+      createdAt: Date.now(),
+    };
+
+    setTransferTasks((prev) => [newTask, ...prev.filter((t) => t.id !== taskId)]);
+    setActiveDownloads((prev) => {
+      const next = new Map(prev);
+      next.set(file.messageId, { progress: 0, speed: "Đang kết nối..." });
+      return next;
+    });
+    showToast(`Đang tải ${file.name} vào Cloud app...`);
+
     try {
-      const res = await downloadTelegramFile(config, file.messageId);
-      const fileObj = new File([res.blob], file.name, { type: res.mimeType });
-
-      if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-        await navigator.share({
-          files: [fileObj],
-          title: file.name,
+      await downloadTelegramFile(config, file.messageId, (percent, speed) => {
+        setTransferTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, progress: Math.round(percent), speed } : t))
+        );
+        setActiveDownloads((prev) => {
+          const next = new Map(prev);
+          next.set(file.messageId, { progress: Math.round(percent), speed });
+          return next;
         });
-        showToast("👉 Chọn 'Lưu vào Tệp' (Files) để lưu trên iPhone!");
-        return;
-      }
+      });
 
-      const url = URL.createObjectURL(res.blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast("Đã tải tệp về máy thành công!");
+      setTransferTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, status: "completed", progress: 100, speed: "Đã lưu tạm" } : t
+        )
+      );
+      setActiveDownloads((prev) => {
+        const next = new Map(prev);
+        next.delete(file.messageId);
+        return next;
+      });
+      setDownloadedFileIds((prev) => new Set(prev).add(file.messageId));
+      showToast(`Đã lưu tạm "${file.name}" vào Cloud app thành công! ✅`);
     } catch (err: any) {
-      showToast("Lỗi tải tệp: " + (err.message || "Thử lại sau"));
+      console.error(`Lỗi tải ${file.name}:`, err);
+      setTransferTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: "error", error: err.message } : t))
+      );
+      setActiveDownloads((prev) => {
+        const next = new Map(prev);
+        next.delete(file.messageId);
+        return next;
+      });
+      showToast(`Lỗi tải ${file.name}: ${err.message || "Thử lại sau"}`);
     }
   };
 
@@ -428,6 +474,11 @@ export function App() {
   const activeTransfersCount = transferTasks.filter(
     (t) => t.status === "running" || t.status === "pending"
   ).length;
+
+  // Tác vụ download đang chạy gần nhất để hiển thị Banner tiến trình thời gian thực
+  const activeDownloadTask = transferTasks.find(
+    (t) => t.type === "download" && t.status === "running"
+  );
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col font-sans select-none overflow-x-hidden">
@@ -483,12 +534,14 @@ export function App() {
             onToggleSelectFile={handleToggleSelectFile}
             onOpenFile={(file) => setSelectedFileForViewer(file)}
             onToggleStar={handleToggleStar}
-            onDownloadFile={handleDownloadFile}
+            onDownloadFile={handleDownloadFileToApp}
             onDeleteFile={handleDeleteFile}
             onOpenUpload={() => {
               const el = document.querySelector('input[type="file"]') as HTMLInputElement;
               el?.click();
             }}
+            downloadedFileIds={downloadedFileIds}
+            activeDownloads={activeDownloads}
           />
         )}
       </main>
@@ -529,6 +582,8 @@ export function App() {
           onToggleStar={handleToggleStar}
           onDeleteFile={handleDeleteFile}
           showToast={showToast}
+          isCached={downloadedFileIds.has(selectedFileForViewer.messageId)}
+          onDownloadToApp={handleDownloadFileToApp}
         />
       )}
 
@@ -566,6 +621,41 @@ export function App() {
         isDarkMode={theme === "dark"}
         onRefreshPhotos={(customCfg) => refreshFilesFromChannel(true, customCfg || config)}
       />
+
+      {/* Floating Download Progress Banner (Hiện tiến trình thời gian thực khi đang tải) */}
+      {activeDownloadTask && (
+        <div
+          onClick={() => setIsTransfersModalOpen(true)}
+          className="fixed bottom-20 inset-x-4 max-w-md mx-auto z-40 bg-neutral-900/95 border border-blue-500/40 backdrop-blur-xl p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 cursor-pointer active:scale-98 transition-all animate-in slide-in-from-bottom duration-200"
+        >
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+              <DownloadCloud className="w-4 h-4 animate-bounce" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                <span className="truncate text-white max-w-[180px]">{activeDownloadTask.name}</span>
+                <span className="text-blue-400 font-mono font-bold ml-2 shrink-0">{activeDownloadTask.progress}%</span>
+              </div>
+              <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 rounded-full transition-all duration-200"
+                  style={{ width: `${activeDownloadTask.progress}%` }}
+                />
+              </div>
+              {activeDownloadTask.speed && (
+                <div className="text-[10px] text-neutral-400 mt-1 flex items-center justify-between">
+                  <span>Tốc độ: {activeDownloadTask.speed}</span>
+                  <span className="text-blue-400 font-medium">Lưu tạm vào Cloud app</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <span className="text-[10px] text-blue-400 font-bold shrink-0 bg-blue-500/10 px-2.5 py-1 rounded-lg">
+            Chi tiết ➔
+          </span>
+        </div>
+      )}
 
       {/* Bottom Navigation Tab Bar */}
       <DriveTabBar

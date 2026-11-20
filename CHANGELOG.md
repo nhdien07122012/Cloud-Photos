@@ -4,6 +4,35 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 29)] - 2026-11-20
+- **Commit SHA**: `72beb5a`
+- **Mục tiêu**:
+  1. **Hiển thị tiến trình tải xuống tệp tin thời gian thực (Download Progress Tracking)**:
+     - Tích hợp tính toán tốc độ truyền tải (MB/s), phần trăm hoàn thành (0 - 100%) và dung lượng đã tải / tổng dung lượng tệp.
+     - **Hiển thị trực quan đa điểm**:
+       + **Trên từng tệp (FileList)**: Biểu tượng tiến trình xoay kèm phần trăm trực tiếp ngay cạnh tên tệp (cả chế độ Danh sách và Lưới).
+       + **Trong trình xem chi tiết (FileViewer)**: Thanh tiến trình đổi màu gradient sinh động, hiển thị số % cực lớn, tốc độ tải (MB/s) và dung lượng tệp chi tiết.
+       + **Khung nổi Banner tiến trình (Floating Download Banner)**: Tự động xuất hiện phía trên thanh điều hướng đáy khi có tệp đang tải, cho phép người dùng theo dõi liền mạch mà không bị gián đoạn khi đang lướt duyệt tệp khác; chạm 1 chạm để mở bảng Quản lý Tiến trình (Transfers Modal).
+       + **Huy hiệu động trên Tab điều hướng**: Bật nhịp đập và đếm số lượng tác vụ đang tải trên tab Tiến trình ở thanh công cụ dưới.
+  2. **Tối ưu hóa nút Download: Lưu tạm vào ứng dụng Cloud, không ghi vào tệp thiết bị**:
+     - Đúng theo yêu cầu của người dùng: Nút Download tải dữ liệu từ Telegram về lưu trực tiếp vào bộ nhớ đệm an toàn của ứng dụng Cloud (`TeleDriveCacheDB` IndexedDB) để người dùng mở xem, nghe nhạc, phát video tức thì offline mà **hoàn toàn không ghi vào ứng dụng Tệp (Files) hoặc bộ nhớ máy**.
+     - Đánh dấu trạng thái **"Đã lưu tạm"** (`CheckCircle2` màu xanh ngọc) trên các tệp đã tải xong, sẵn sàng mở offline mọi lúc không tốn 3G/4G/Wifi.
+     - Tách biệt rõ ràng với chức năng **"Chia sẻ / Xuất ra Tệp thiết bị"** (chỉ kích hoạt khi người dùng chủ động bấm nút Chia sẻ `Share2` để xuất ra bên ngoài).
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/fileStorage.ts`: Bổ sung `getDownloadedMessageIds()`, `isFileContentCached()`.
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Bổ sung tính toán tốc độ tải (speed) trong `downloadTelegramFile()`.
+  - `ios-photo-app/src/components/FileViewer.tsx`: Thiết kế lại giao diện nút tải lưu tạm vào Cloud app, thanh tiến trình % và nút chia sẻ riêng biệt.
+  - `ios-photo-app/src/components/FileList.tsx`: Bổ sung huy hiệu tiến trình tải và huy hiệu đã lưu tạm trên từng dòng tệp (List và Grid).
+  - `ios-photo-app/src/App.tsx`: Tích hợp `handleDownloadFileToApp`, banner tiến trình nổi, theo dõi `downloadedFileIds` và `activeDownloads`.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị Build 29.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 29.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 28)] - 2026-11-19
 - **Commit SHA**: `a030f5c`
 - **Mục tiêu**:

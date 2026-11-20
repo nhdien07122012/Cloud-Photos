@@ -357,6 +357,46 @@ export async function getCachedFileData(messageId: number): Promise<ArrayBuffer 
 }
 
 /**
+ * Lấy danh sách toàn bộ ID tin nhắn đã được tải nội dung về Cache ứng dụng (Offline sẵn sàng)
+ */
+export async function getDownloadedMessageIds(): Promise<Set<number>> {
+  try {
+    const db = await openDatabase();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_BLOBS, "readonly");
+      const store = tx.objectStore(STORE_BLOBS);
+      const req = store.getAllKeys();
+      req.onsuccess = () => {
+        const keys = (req.result || []) as number[];
+        resolve(new Set(keys));
+      };
+      req.onerror = () => resolve(new Set());
+    });
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Kiểm tra xem tệp đã tải nội dung về Cache ứng dụng hay chưa
+ */
+export async function isFileContentCached(messageId: number): Promise<boolean> {
+  if (blobDataMap.has(messageId)) return true;
+  try {
+    const db = await openDatabase();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_BLOBS, "readonly");
+      const store = tx.objectStore(STORE_BLOBS);
+      const req = store.getKey(messageId);
+      req.onsuccess = () => resolve(req.result !== undefined);
+      req.onerror = () => resolve(false);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Lưu dữ liệu tải về của file vào Cache
  */
 export async function saveCachedFileData(
