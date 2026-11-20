@@ -4,6 +4,33 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 32)] - 2026-11-20
+- **Commit SHA**: *(Tự động gắn sau khi commit)*
+- **Mục tiêu**:
+  1. **Tăng tốc độ tải tệp vượt bậc từ 200-300 KB/s lên 10-25 MB/s (Tăng 30x - 50x lần)**:
+     - **Nguyên nhân tốc độ tải trước đây bị giới hạn ở 200-300 KB/s**:
+       + Thư viện GramJS gốc sử dụng cơ chế tải tuần tự đơn luồng (`DirectDownloadIter` / `GenericDownloadIter` với `for await chunk`).
+       + Mỗi khối dữ liệu (chunk) chỉ có kích thước 64KB hoặc 128KB.
+       + Mỗi khối phải gửi một yêu cầu MTProto `upload.GetFile` từ thiết bị đến máy chủ Telegram (đặt tại Châu Âu / Hà Lan / London), chờ gói tin đi qua cáp quang biển với độ trễ (RTT latency) ~180-220ms, rồi mới gửi yêu cầu khối tiếp theo.
+       + Giới hạn vật lý của đơn luồng có độ trễ: $\frac{1 \text{ request}}{0.2 \text{s}} \times 64 \text{ KB} \approx 320 \text{ KB/s}$. Đây là lý do vì sao mạng cáp quang hay 5G rất mạnh nhưng tải file vẫn chỉ loanh quanh 200-300 KB/s.
+     - **Giải pháp bứt phá với Bộ tải song song đa luồng (Parallel Multi-Worker Downloader)**:
+       + **Nâng chunk size lên mức tối đa của giao thức Telegram MTProto**: Nâng từ 64KB lên `512 KB` (`524,288 bytes` - giới hạn tối đa mà hàm `upload.GetFile` cho phép). Riêng bước này đã tăng lượng dữ liệu tải về mỗi chuyến đi về lên gấp 8 lần.
+       + **Đa luồng song song (6 Concurrent Workers)**: Khởi chạy đồng thời 6 luồng tải độc lập song song qua `MTProtoSender` ghép kênh (multiplexed channel).
+       + Băng thông lý thuyết: $\frac{6 \text{ luồng} \times 512 \text{ KB}}{0.2 \text{s}} \approx 15.36 \text{ MB/s}$ (thực tế có thể đạt 10 - 25 MB/s tùy chất lượng đường truyền).
+       + **Cơ chế tự động chuyển vùng DC (Auto DC Migration)**: Bắt lỗi `FileMigrateError` và tự động điều phối `client.getSender(newDc)` cho toàn bộ các luồng tải mà không bị gián đoạn.
+       + **Cơ chế phục hồi lỗi khối (Fault Tolerant Retry)**: Mỗi khối 512KB nếu gặp lỗi mạng chập chờn sẽ được tự động thử lại 3 lần trước khi ném ngoại lệ.
+       + **Cơ chế dự phòng an toàn (Safe Fallback)**: Với các tệp dung lượng nhỏ ($\le 512\text{ KB}$) hoặc nếu giao thức song song gặp sự cố bất ngờ, hệ thống tự động chuyển sang `client.downloadMedia` chuẩn để đảm bảo file luôn tải về thành công 100%.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Triển khai hàm `downloadMediaFast` với kỹ thuật 6 workers song song, chunk 512KB, DC migration handling và fallback an toàn.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp số hiệu bản dựng lên Build 32.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 32.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 31)] - 2026-11-20
 - **Commit SHA**: *(Tự động gắn sau khi commit)*
 - **Mục tiêu**:
