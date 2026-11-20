@@ -18,6 +18,7 @@ interface TransfersModalProps {
   onClose: () => void;
   tasks: TransferTask[];
   onClearCompleted: () => void;
+  onRemoveTask?: (taskId: string) => void;
 }
 
 export const TransfersModal: React.FC<TransfersModalProps> = ({
@@ -25,10 +26,24 @@ export const TransfersModal: React.FC<TransfersModalProps> = ({
   onClose,
   tasks,
   onClearCompleted,
+  onRemoveTask,
 }) => {
   if (!isOpen) return null;
 
-  const activeCount = tasks.filter((t) => t.status === "running" || t.status === "pending").length;
+  // Lọc loại bỏ các tác vụ trùng lặp ID (chỉ giữ tác vụ mới nhất)
+  const uniqueTasks = React.useMemo(() => {
+    const seen = new Set<string>();
+    const res: TransferTask[] = [];
+    for (const t of tasks) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        res.push(t);
+      }
+    }
+    return res;
+  }, [tasks]);
+
+  const activeCount = uniqueTasks.filter((t) => t.status === "running" || t.status === "pending").length;
 
   return (
     <div
@@ -73,19 +88,19 @@ export const TransfersModal: React.FC<TransfersModalProps> = ({
 
         {/* Task List */}
         <div className="flex-1 overflow-y-auto py-3 space-y-3 min-h-[160px]">
-          {tasks.length === 0 ? (
+          {uniqueTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-neutral-500">
               <ArrowUpDown className="w-8 h-8 mb-2 opacity-40" />
               <p className="text-xs">Không có tệp nào đang tải lên hoặc tải xuống</p>
             </div>
           ) : (
-            tasks.map((task) => (
+            uniqueTasks.map((task) => (
               <div
                 key={task.id}
                 className="p-3 bg-neutral-800/50 border border-neutral-800 rounded-2xl space-y-2"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
                       className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                         task.type === "upload"
@@ -99,8 +114,8 @@ export const TransfersModal: React.FC<TransfersModalProps> = ({
                         <DownloadCloud className="w-4 h-4" />
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-white truncate max-w-[200px] sm:max-w-xs">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-white truncate max-w-[180px] sm:max-w-xs" title={task.name}>
                         {task.name}
                       </p>
                       <p className="text-[10px] text-neutral-400">
@@ -110,7 +125,7 @@ export const TransfersModal: React.FC<TransfersModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="shrink-0 text-right">
+                  <div className="shrink-0 flex items-center gap-2">
                     {task.status === "completed" ? (
                       <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -122,9 +137,23 @@ export const TransfersModal: React.FC<TransfersModalProps> = ({
                         <span>Lỗi</span>
                       </span>
                     ) : (
-                      <span className="text-xs font-bold text-blue-400">
+                      <span className="text-xs font-bold text-blue-400 font-mono">
                         {task.progress}%
                       </span>
+                    )}
+
+                    {/* Nút hủy / xóa tác vụ */}
+                    {onRemoveTask && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveTask(task.id);
+                        }}
+                        className="p-1 rounded-full text-neutral-500 hover:text-neutral-300 active:text-white transition-colors cursor-pointer"
+                        title="Hủy / Xóa tác vụ này"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>

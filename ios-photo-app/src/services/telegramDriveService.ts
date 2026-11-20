@@ -521,8 +521,12 @@ export async function fetchDriveFiles(
   }
 }
 
+// Quản lý các tiến trình tải đang chạy để ngăn chặn triệt để 100% xung đột tải trùng lặp
+const inFlightDownloads = new Map<number, Promise<{ blob: Blob; fileName: string; mimeType: string }>>();
+const downloadListeners = new Map<number, Set<(progress: number, speed?: string) => void>>();
+
 /**
- * Tải toàn bộ nội dung tệp từ Telegram về máy
+ * Tải toàn bộ nội dung tệp từ Telegram về máy (Được bảo vệ bằng In-flight Singleton Promise)
  */
 export async function downloadTelegramFile(
   config: TelegramConfig,
@@ -545,56 +549,98 @@ export async function downloadTelegramFile(
     };
   }
 
-  // 2. Tải trực tiếp từ Telegram MTProto
-  const client = await initDriveClient(config);
-  const resolved = await resolveChannelPeer(client, config.channelId);
-  const targetPeer: any = resolved ? resolved.peer : config.channelId;
-
-  const messages = await client.getMessages(targetPeer, { ids: [messageId] });
-  if (!messages || !messages[0] || !messages[0].media) {
-    throw new Error(`Không tìm thấy dữ liệu tệp cho tin nhắn #${messageId}`);
+  // 2. Nếu tệp này ĐANG trong tiến trình tải dở (In-flight), tái sử dụng Promise đang chạy, không tải đúp!
+  if (inFlightDownloads.has(messageId)) {
+    if (onProgress) {
+      if (!downloadListeners.has(messageId)) {
+        downloadListeners.set(messageId, new Set());
+      }
+      downloadListeners.get(messageId)!.add(onProgress);
+    }
+    return inFlightDownloads.get(messageId)!;
   }
 
-  const targetMedia = messages[0].media;
-  let startTime = Date.now();
-  let lastBytes = 0;
-  let lastTime = startTime;
+  // 3. Khởi tạo Promise tải duy nhất cho messageId này
+  const downloadPromise = (async () => {
+    try {
+      const client = await initDriveClient(config);
+      const resolved = await resolveChannelPeer(client, config.channelId);
+      const targetPeer: any = resolved ? resolved.peer : config.channelId;
 
-  const rawBuffer: any = await client.downloadMedia(targetMedia, {
-    progressCallback: (downloaded: any, total: any) => {
-      const now = Date.now();
-      const currentBytes = Number(downloaded);
-      const totalBytes = Number(total);
-      const percent = totalBytes > 0 ? Math.round((currentBytes / totalBytes) * 100) : 0;
-
-      const elapsed = (now - lastTime) / 1000;
-      let speedStr = "Đang tải...";
-      if (elapsed >= 0.5) {
-        const speedBps = (currentBytes - lastBytes) / (elapsed || 1);
-        speedStr = `${formatBytes(speedBps)}/s`;
-        lastBytes = currentBytes;
-        lastTime = now;
+      const messages = await client.getMessages(targetPeer, { ids: [messageId] });
+      if (!messages || !messages[0] || !messages[0].media) {
+        throw new Error(`Không tìm thấy dữ liệu tệp cho tin nhắn #${messageId}`);
       }
 
-      if (onProgress && total) {
-        onProgress(Math.min(percent, 99), speedStr);
-      }
-    },
-  });
+      const targetMedia = messages[0].media;
+      let startTime = Date.now();
+      let lastBytes = 0;
+      let lastTime = startTime;
 
-  if (!rawBuffer) {
-    throw new Error("Tải tệp không thành công. Dữ liệu rỗng.");
+      const rawBuffer: any = await client.downloadMedia(targetMedia, {
+        progressCallback: (downloaded: any, total: any) => {
+          const now = Date.now();
+          const currentBytes = Number(downloaded);
+          const totalBytes = Number(total);
+          const percent = totalBytes > 0 ? Math.round((currentBytes / totalBytes) * 100) : 0;
+
+          const elapsed = (now - lastTime) / 1000;
+          let speedStr = "Đang tải...";
+          if (elapsed >= 0.5) {
+            const speedBps = (currentBytes - lastBytes) / (elapsed || 1);
+            speedStr = `${formatBytes(speedBps)}/s`;
+            lastBytes = currentBytes;
+            lastTime = now;
+          }
+
+          // Báo tiến trình cho TẤT CẢ các bên đang lắng nghe
+          const listeners = downloadListeners.get(messageId);
+          if (listeners) {
+            listeners.forEach((fn) => {
+              try {
+                fn(Math.min(percent, 99), speedStr);
+              } catch {}
+            });
+          }
+        },
+      });
+
+      if (!rawBuffer) {
+        throw new Error("Tải tệp không thành công. Dữ liệu rỗng.");
+      }
+
+      // Lưu vào IndexedDB để lần sau mở tức thì
+      await saveCachedFileData(messageId, rawBuffer, mimeType);
+
+      const listeners = downloadListeners.get(messageId);
+      if (listeners) {
+        listeners.forEach((fn) => {
+          try {
+            fn(100, "Xong");
+          } catch {}
+        });
+      }
+
+      return {
+        blob: new Blob([rawBuffer], { type: mimeType }),
+        fileName,
+        mimeType,
+      };
+    } finally {
+      inFlightDownloads.delete(messageId);
+      downloadListeners.delete(messageId);
+    }
+  })();
+
+  if (onProgress) {
+    if (!downloadListeners.has(messageId)) {
+      downloadListeners.set(messageId, new Set());
+    }
+    downloadListeners.get(messageId)!.add(onProgress);
   }
 
-  // Lưu vào IndexedDB để lần sau mở tức thì
-  await saveCachedFileData(messageId, rawBuffer, mimeType);
-  if (onProgress) onProgress(100, "Xong");
-
-  return {
-    blob: new Blob([rawBuffer], { type: mimeType }),
-    fileName,
-    mimeType,
-  };
+  inFlightDownloads.set(messageId, downloadPromise);
+  return downloadPromise;
 }
 
 /**

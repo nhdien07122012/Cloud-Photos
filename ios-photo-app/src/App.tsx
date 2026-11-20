@@ -360,12 +360,26 @@ export function App() {
 
   // Tải tệp từ Telegram vào bộ nhớ tạm ứng dụng Cloud (LƯU TẠM - Không ghi vào tệp của thiết bị)
   const handleDownloadFileToApp = async (file: CloudFile) => {
+    // 1. Nếu đã lưu sẵn trong cache ứng dụng
     if (downloadedFileIds.has(file.messageId)) {
       showToast(`Tệp "${file.name}" đã được lưu sẵn trong Cloud app (xem offline) 📁`);
       return;
     }
 
-    const taskId = `dl-${file.messageId}-${Date.now()}`;
+    // 2. Ngăn chặn 100% xung đột: Nếu tệp này đang trong tiến trình tải, tuyệt đối không tạo thêm tác vụ!
+    const taskId = `dl-${file.messageId}`;
+    const isAlreadyRunning =
+      activeDownloads.has(file.messageId) ||
+      transferTasks.some(
+        (t) => t.id === taskId && (t.status === "running" || t.status === "pending")
+      );
+
+    if (isAlreadyRunning) {
+      const currentProg = activeDownloads.get(file.messageId)?.progress || 0;
+      showToast(`Tệp "${file.name}" đang được tải (${currentProg}%) ⏳`);
+      return;
+    }
+
     const newTask: TransferTask = {
       id: taskId,
       name: file.name,
@@ -378,6 +392,7 @@ export function App() {
       createdAt: Date.now(),
     };
 
+    // Luôn lọc bỏ taskId cũ nếu có để danh sách không bao giờ bị trùng lặp
     setTransferTasks((prev) => [newTask, ...prev.filter((t) => t.id !== taskId)]);
     setActiveDownloads((prev) => {
       const next = new Map(prev);
@@ -584,6 +599,9 @@ export function App() {
           onDeleteFile={handleDeleteFile}
           showToast={showToast}
           isCached={downloadedFileIds.has(selectedFileForViewer.messageId)}
+          isDownloading={activeDownloads.has(selectedFileForViewer.messageId)}
+          downloadProgress={activeDownloads.get(selectedFileForViewer.messageId)?.progress}
+          downloadSpeed={activeDownloads.get(selectedFileForViewer.messageId)?.speed}
           onDownloadToApp={handleDownloadFileToApp}
         />
       )}
@@ -603,6 +621,19 @@ export function App() {
         onClearCompleted={() =>
           setTransferTasks((prev) => prev.filter((t) => t.status !== "completed"))
         }
+        onRemoveTask={(taskId) => {
+          setTransferTasks((prev) => prev.filter((t) => t.id !== taskId));
+          if (taskId.startsWith("dl-")) {
+            const msgId = parseInt(taskId.replace("dl-", ""), 10);
+            if (!isNaN(msgId)) {
+              setActiveDownloads((prev) => {
+                const next = new Map(prev);
+                next.delete(msgId);
+                return next;
+              });
+            }
+          }
+        }}
       />
 
       {/* Settings Modal (Cấu hình Telegram, iCloud Backup, Theme) */}

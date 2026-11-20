@@ -31,6 +31,9 @@ interface FileViewerProps {
   onDeleteFile: (file: CloudFile) => void;
   showToast: (msg: string) => void;
   isCached?: boolean;
+  isDownloading?: boolean;
+  downloadProgress?: number;
+  downloadSpeed?: string;
   onDownloadToApp?: (file: CloudFile) => void;
 }
 
@@ -42,21 +45,17 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   onDeleteFile,
   showToast,
   isCached = false,
+  isDownloading = false,
+  downloadProgress,
+  downloadSpeed,
   onDownloadToApp,
 }) => {
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
   const [downloadedUrl, setDownloadedUrl] = useState<string | null>(null);
   const [isLocallyCached, setIsLocallyCached] = useState<boolean>(isCached);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
     setScale(1);
-    setDownloadProgress(null);
-    setDownloadSpeed(null);
-    setIsDownloading(false);
-
     if (file?.messageId) {
       getCachedFileData(file.messageId).then((data) => {
         if (data && data.byteLength > 0) {
@@ -74,35 +73,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   if (!file) return null;
 
   // 1. Tải file từ Telegram vào bộ nhớ đệm ứng dụng Cloud (LƯU TẠM - Không ghi vào tệp thiết bị)
-  const handleDownloadToApp = async () => {
-    if (isDownloading) return;
+  const handleDownloadToApp = () => {
+    if (isDownloading || isLocallyCached) return;
 
-    if (onDownloadToApp) {
+    // Ủy thác cho App quản lý tiến trình duy nhất (Tránh 100% xung đột tạo 2 tiến trình tải song song)
+    if (onDownloadToApp && file) {
       onDownloadToApp(file);
-    }
-
-    setIsDownloading(true);
-    setDownloadProgress(0);
-    setDownloadSpeed("Đang kết nối...");
-    showToast(`Đang tải ${file.name} vào Cloud app...`);
-
-    try {
-      const res = await downloadTelegramFile(config, file.messageId, (p, speed) => {
-        setDownloadProgress(p);
-        if (speed) setDownloadSpeed(speed);
-      });
-
-      const localUrl = URL.createObjectURL(res.blob);
-      setDownloadedUrl(localUrl);
-      setIsLocallyCached(true);
-      showToast(`Đã lưu tạm "${file.name}" vào Cloud app thành công! ✅`);
-    } catch (err: any) {
-      console.error("Lỗi tải tệp vào Cloud app:", err);
-      showToast("Lỗi khi tải tệp: " + (err.message || "Thử lại sau"));
-    } finally {
-      setIsDownloading(false);
-      setDownloadProgress(null);
-      setDownloadSpeed(null);
     }
   };
 
@@ -115,8 +91,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         const res = await fetch(downloadedUrl);
         dataBlob = await res.blob();
       } else {
-        const res = await downloadTelegramFile(config, file.messageId);
-        dataBlob = res.blob;
+        const cached = await getCachedFileData(file.messageId);
+        if (cached && cached.byteLength > 0) {
+          dataBlob = new Blob([cached], { type: file.mimeType });
+        } else {
+          const res = await downloadTelegramFile(config, file.messageId);
+          dataBlob = res.blob;
+        }
       }
 
       if (!dataBlob) return;

@@ -4,6 +4,33 @@ Toàn bộ các phiên bản cập nhật, mã bản dựng (build number), chi 
 
 ---
 
+## [v2.0 (Build 31)] - 2026-11-20
+- **Commit SHA**: *(Tự động gắn sau khi commit)*
+- **Mục tiêu**:
+  1. **Khắc phục triệt để lỗi xung đột 2 tiến trình tải cùng 1 file (Duplicate Concurrent Downloads)**:
+     - **Nguyên nhân cốt lõi**:
+       + Trong `FileViewer.tsx`: Hàm `handleDownloadToApp` trước đây vừa gọi `onDownloadToApp(file)` (ủy thác cho `App.tsx`) đồng thời không dừng lại mà tiếp tục tự gọi `downloadTelegramFile()` một lần nữa. Khi người dùng bấm tải từ màn hình xem chi tiết hoặc khi bấm tải ở ngoài danh sách rồi mở file vào xem, 2 kết nối tải độc lập cùng lúc được kích hoạt vào Telegram MTProto.
+       + Trong `App.tsx`: Hàm `handleDownloadFileToApp` dùng ID động theo thời gian `dl-${messageId}-${Date.now()}` và thiếu cơ chế chặn (guard check) khi file đang được tải dở, dẫn đến việc mỗi lần kích hoạt lại sinh thêm 1 task mới cùng chạy song song (ví dụ task 10% và task 50% cùng một file).
+       + Tại tầng kết nối (`telegramDriveService.ts`): Thiếu cơ chế khử trùng lặp tiến trình tải đang bay (In-flight Singleton Promise).
+     - **Giải pháp xử lý 3 tầng bảo vệ**:
+       + **Tầng 1 (Network / Service Singleton)**: Bổ sung `inFlightDownloads` (Map cache Promise đang chạy) và `downloadListeners` (tập hợp các callback lắng nghe tiến trình). Nếu bất kỳ đâu trong app gọi tải cùng một `messageId`, dịch vụ sẽ tái sử dụng 1 Promise tải duy nhất từ Telegram, chia sẻ tiến trình real-time cho tất cả các bên mà không bao giờ mở 2 kết nối trùng lặp.
+       + **Tầng 2 (State / App Guard)**: Đổi `taskId` thành định danh duy nhất `dl-${file.messageId}` và bổ sung chốt chặn `isAlreadyRunning`: Nếu file đã có trong danh sách đang tải hoặc trong `activeDownloads`, lập tức báo toast `"Tệp đang được tải rồi (X%)"` và ngăn tạo thêm task trùng lặp.
+       + **Tầng 3 (Component Synchronization)**: `FileViewer` được đồng bộ toàn diện với `App.tsx` qua props `isDownloading`, `downloadProgress`, `downloadSpeed`. Khi bấm tải, `FileViewer` chỉ gọi `onDownloadToApp` và hiển thị trực tiếp tiến trình toàn cục, không tự ý kích hoạt thêm tiến trình riêng.
+       + **Tầng 4 (Transfers Modal)**: Bổ sung cơ chế tự động khử trùng lặp (Deduplicate) task trong bảng Quản lý tiến trình, và thêm nút `X` cho phép hủy / xóa riêng từng tác vụ theo ý muốn.
+- **Chi tiết thay đổi**:
+  - `ios-photo-app/src/services/telegramDriveService.ts`: Triển khai In-flight Singleton Promise và Multi-listener Event Emitter cho `downloadTelegramFile`.
+  - `ios-photo-app/src/App.tsx`: Khóa chặn tải đúp, chuẩn hóa `taskId`, kết nối props tiến trình vào `FileViewer` và bổ sung `onRemoveTask` cho `TransfersModal`.
+  - `ios-photo-app/src/components/FileViewer.tsx`: Xóa bỏ lệnh gọi trùng lặp, đồng bộ trạng thái tải từ `App.tsx`.
+  - `ios-photo-app/src/components/TransfersModal.tsx`: Lọc tác vụ trùng lặp và thêm nút `X` xóa từng tác vụ.
+  - `ios-photo-app/src/components/SettingsModal.tsx`: Nâng cấp hiển thị Build 31.
+  - `ios-photo-app/ios/App/App.xcodeproj/project.pbxproj`: Nâng `CURRENT_PROJECT_VERSION` thành 31.
+- **Lệnh hoàn tác mẫu (Rollback)**:
+  ```bash
+  git revert HEAD --no-edit
+  ```
+
+---
+
 ## [v2.0 (Build 30)] - 2026-11-20
 - **Commit SHA**: *(Tự động gắn sau khi commit)*
 - **Mục tiêu**:
